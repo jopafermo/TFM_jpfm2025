@@ -1,0 +1,2578 @@
+---
+title: "ANÁLISIS TRANSCRIPTÓMICO DE RAÍCES DE Medicago truncatula CON EDGER"
+author: "Josefina Patricia Fernández Moreno"
+output: "R Notebook (código en r)"
+  html_document: "Trabajo de fin de Máster - MBIF VIU 2024-2025"
+    df_print: paged
+---
+
+**Fecha de creación: junio de 2025**
+
+**Asignatura 09MBIF del Máster en Bioinformática (VIU, 2024-2025)**
+
+Este documento contiene todo el código escrito en r utilizado para realizar el análisis de expresión génica diferencial en raices de *Medicago truncatula* inoculadas o no con microorganismos fijadores de nitrógeno capaces de generar nódulos radiculares.
+
+El contenido de este código es el siguiente:
+
+-   [0] **INSTALACIÓN DE PAQUETES Y SELECCIÓN DE DIRECTORIO DE TRABAJO**
+
+-   [1] **IMPORTACIÓN DE METADATOS Y GENERACIÓN DE LOS FACTORES DE AGRUPACIÓN**
+
+-   [2] **IMPORTACIÓN DE LA TABLA DE CONTEOS Y CREACIÓN DEL OBJETO DEGList**
+
+-   [3] **INSPECCIÓN INICIAL DE LOS DATOS Y VISUALIZACIÓN**
+
+-   [4] **FILTRADO DE LOS GENES Y VISUALIZACIÓN**
+
+-   [5] **NORMALIZACIÓN DE LOS RECUENTOS POR EL MÉTODO TMM Y VISUALIZACIÓN DE CPMs ANTES Y DESPUÉS DE NORMALIZAR**
+
+-   [6] **ANÁLISIS DE DIVERSIDAD MUESTRAL MEDIANTE UN GRÁFICO DE ESCALADO MULTIDIMENSIONAL (MDS PLOT)**
+
+-   [7] **DISTRIBUCIÓN ESTADÍSTICA DE LOS DATOS Y AJUSTE DEL MODELO DE DISTRIBUCIÓN**
+
+-   [8] **MATRIZ DE CONTRASTES, CONTRASTES ESTADÍSTICOS Y CORRECCIONES DEL TESTEO MÚLTIPLE**
+
+    -   EXPERIMENTO INFORMÁTICO 1: EFECTO DEL ORDEN DE LOS FACTORES GENOTIPO vs TRATAMIENTO
+
+-   [9] **FILTRADO DE GENES SIGNIFICATIVAMENTE DIFERENCIALMENTE EXPRESADOS**
+
+    -   EXPERIMENTO INFORMÁTICO 2: EFECTO DE RESTRICCIÓN DE LA SIGNIFICANCIA (FDR/pvadj: I-0,05, II-0,01, III-0,001)
+
+-   [10] **VISUALIZACIONES (I): GRÁFICOS DE VOLCÁN (VOLCANO PLOTS)**
+
+    -   [A] EXPERIMENTO 1 = EFECTO GENOTIPO + EXPERIMENTO 2 (x3 VALORES DE SIGNIFICANCIA)
+
+        -   [A.1] EFECTO GENOTIPO A TIEMPO 0h (para FDR = 0,05, 0,01, ó 0,001)
+
+        -   [A.2] EFECTO GENOTIPO A TIEMPO 48h (para FDR = 0,05, 0,01, ó 0,001)
+
+    -   [B] EXPERIMENTO 1 = EFECTO TRATAMIENTO + EXPERIMENTO 2 (x3 VALORES DE SIGNIFICACIA)
+
+        -   [B.1] EFECTO TRATAMIENTO EN A17 (para FDR = 0,05, 0,01, ó 0,001)
+
+        -   [B.2] EFECTO TRATAMIENTO EN skl (para FDR = 0,05, 0,01, ó 0,001)
+
+-   [11] **VISUALIZACIONES (II): GRÁFICOS UPSET (UPSET PLOTS)**
+
+    -   [A] EXPERIMENTO 1 = EFECTO GENOTIPO. COMPARACIÓN ENTRE TRATAMIENTOS
+
+        -   [A.1] EXPERIMENTO 2 = 0,05 FDR
+
+        -   [A.2] EXPERIMENTO 2 = 0,01 FDR
+
+        -   [A.3] EXPERIMENTO 2 = 0,001 FDR
+
+    -   [B] EXPERIMENTO 2 = EFECTO TRATAMIENTO. COMPARACIÓN ENTRE GENOTIPOS
+
+        -   [B.1] EXPERIMENTO 2 = 0,05 FDR
+
+        -   [B.2] EXPERIMENTO 2 = 0,01 FDR
+
+        -   [B.3] EXPERIMENTO 2 = 0,001 FDR
+
+-   [12] **CLUSTERING Y HEAT MAPS**
+
+    -   [1] EFECTO GENOTIPO G0h (skl_0h - A17_0h) + SIGNIFICANCIA FDR \< 0,05 PARA GENES SÓLO UP EN A17
+
+    -   [2] EFECTO GENOTIPO G0h (skl_0h - A17_0h) + SIGNIFICANCIA FDR \< 0,01 PARA GENES SÓLO UP EN A17
+
+    -   [3] EFECTO GENOTIPO G0h (skl_0h - A17_0h) + SIGNIFICANCIA FDR \< 0,001 PARA GENES SÓLO UP EN A17
+
+    -   [4] EFECTO GENOTIPO G48h (skl_48h - A17_48h) + SIGNIFICANCIA FDR \< 0,05 PARA GENES SÓLO UP EN A17
+
+    -   [5] EFECTO GENOTIPO G48h (skl_48h - A17_48h) + SIGNIFICANCIA FDR \< 0,01 PARA GENES SÓLO UP EN A17
+
+    -   [6] EFECTO GENOTIPO G48h (skl_48h - A17_48h) + SIGNIFICANCIA FDR \< 0,001 PARA GENES SÓLO UP EN A17
+
+**ARCHIVOS DE PARTIDA**
+
+-   *Metadata_Medicago.tsv* = contiene la información de las muestras (4 condiciones con 4 réplicas biológicas cada una) y los factores que la componen (genético y tratamiento).
+
+-   *salmon.A17.skl_count_matrix_raw.tsv* = contiene la matriz de recuentos compatible con edgeR para las muestras descritas en el archivo de metadatos.
+
+# **[0] INSTALACIÓN DE PAQUETES Y SELECCIÓN DE DIRECTORIO DE TRABAJO**
+
+A continuación se incluyen todos los paquetes y librerias necesarios para realizar el script en R.
+
+```{r}
+
+# SELECCIÓN DEL PATH DEL DIRECTORIO DE TRABAJO
+
+setwd("~/Desktop/TFM/05MBIF_EdgeRcode_DEG")
+
+## IMPORTANTE: modifica este path de acuerdo con la ubicación del directorio de trabajo desde
+## el que se esté trabajando. Los archivos de metadatos y la matriz de recuentos deben estar en el mismo directorio de trabajo.
+
+
+################################################
+
+# INSTALACIÓN Y CARGA DE PAQUETES Y LIBRERÍAS NECESARIAS PARA ESTE SCRIPT
+
+## Instalación dependiente del paquete BiocManager
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+packages.installed.with.BiocManager = c("edgeR", "topGO")
+
+new.packages.BiocManager = packages.installed.with.BiocManager [!(packages.installed.with.BiocManager %in% BiocManager::install())]
+
+
+## Instalación dependiente del paquete devtools
+if (!requireNamespace("devtools", quietly = TRUE))
+  install.packages("devtools")
+
+packages.installed.with.devtools_github = c("yanlinlin82/ggvenn", "djw533/micro.gen.extra")
+
+new.packages.devtools = packages.installed.with.devtools_github [!(packages.installed.with.devtools_github %in% BiocManager::install())]
+
+## Librerías a utilizar
+list.of.packages = c("BiocManager", "edgeR", "topGO", "devtools", "limma", "statmod", "pheatmap", "stats4", "AnnotationDbi", "RColorBrewer", "tidyverse", "dplyr", "ggplot2", "ggrepel",  "UpSetR", "usethis", "devtools", "ggvenn", "dendextend", "microbenchmark")
+
+
+## Verificación de instalación de librerias
+new.packages = list.of.packages [!(list.of.packages %in% installed.packages())]
+
+## En caso de que falte alguna se instalará (evitamos instalaciones duplicadas) 
+### Si es =0, no hay librerías nuevas que instalar y no se hará nada en este apartado
+if(length(new.packages)> 0) install.packages(new.packages) 
+
+
+## Cargar las librerias
+### El uso de la función lapply() permite cargar todos los paquetes automáticamente.
+invisible(lapply(list.of.packages, FUN=library, character.only=TRUE))
+
+
+```
+
+# **[1] IMPORTACIÓN DE METADATOS Y GENERACIÓN DE LOS FACTORES DE AGRUPACIÓN**
+
+En este aparatado se importa en R el archivo de metadatos, se definen los grupos muestrales y se asigna un nivel (o factor) que será usado posteriormente en los distintos apartados de contrastes estadísticos.
+
+```{r - IMPORTACIÓN DE METADATOS Y CREACIÓN DEL OBJETO FACTOR DE AGRUPACIÓN}
+
+# DATOS DE ENTRADA: Metadata_Medicago.tsv 
+
+# Importo los metadatos en el objeto sampleinfo
+sampleinfo <- read.delim(file = "Metadata_Medicago.tsv")
+head(sampleinfo)
+
+# Creo el objeto group donde defino las dos categorias principales de los datos:  
+# genotype y time point
+group = paste(sampleinfo$Genotype, sampleinfo$TimePoint, sep = "_")
+group
+
+# Transformo el objeto categórico group, en un factor de agrupación.
+# Cada factor es un nivel. El primer nivel tiene que se el del genotipo silvestre A17
+# en el tiempo 0h (antes de la inoculación): A17_0h 
+group = factor(group)
+group
+table(group)    # tabla de frecuencias para cada nivel o factor (número de réplicas/grupo)
+
+```
+
+# **[2] IMPORTACIÓN DE LA TABLA DE CONTEOS Y CREACIÓN DEL OBJETO DEGList**
+
+Importamos la tabla de recuentos en R, importamos las anotaciones y junto con la variable grupo ya generada, creamos el objeto DEGList usado por edgeR.
+
+```{r - IMPORTACIÓN DE LA MATRIZ DE RECUENTOS Y CREACIÓN DEL OBJETO DEGList}
+
+# DATOS DE ENTRADA: salmon.A17.skl_count_matrix_raw.tsv
+
+# Importamos la matriz de recuentos con la función read.delim() ya que tenemos
+# todas las muestras en el mismo archivo 
+seqdata = read.delim(file = "./salmon.A17.skl_count_matrix_raw.tsv")  
+head(seqdata)
+dim(seqdata)
+#
+# Utilizo la segunda columna de gene_name para crear la variable de anotaciones
+names = seqdata$gene_name
+ann = data.frame(names)
+head(ann)
+dim(ann)
+#
+# A continuación uso la primera columna de gene_id para nombrar las filas 
+rownames(seqdata) = seqdata[,1]
+#
+# Y elimino las columnas 1 y 2, dejando sólo el nombre de las filas y los valores de recuento
+seqdata = seqdata[,3:ncol(seqdata)]
+head(seqdata)
+#
+# Genero el objeto DEGList a partir de la tabla de recuentos formateada
+#
+y = DGEList(seqdata)
+#
+# Y añado los objetos group y ann
+#
+y$samples$group = group   # Añado el factor de agrupación
+y$genes = ann             # Añado las anotaciones
+head(y)
+```
+
+# **[3] INSPECCIÓN INICIAL DE LOS DATOS Y VISUALIZACIÓN**
+
+Obtenemos algunas métricas sobre los datos iniciales de partida utilizando código en bash y graficando los resultados en R.
+
+```{r - ABUNDANCIA DE LOS DISTINTOS ELEMENTOS DENTRO DE LA TABLA DE RECUENTOS}
+
+# Vuelvo a importar la tabla de recuentos, pero esta vez mantenemos su formato de dataframe
+count.matx = read.delim(file = "./salmon.A17.skl_count_matrix_raw.tsv") 
+head(count.matx)
+dim(count.matx)
+
+# Inspección visual muestra distintos tipos de elementos:
+## helitron
+## terminal_inverted_repeat_element
+## retrotransposon
+## non_LTR_retrotransposon
+## repeat_region
+## [some helitrons, inverted repeats and rertrotransposons are also labeled as "singleton"]
+## MtrunA17_Chr (1-8)
+## MtrunA17_CP (chloroplast)
+## MtrunA17_MT (mitochondrion)
+
+# Defino una lista con el nombre de cada elemento individual
+list.elements = c("helitron", "terminal_inverted_repeat_element", "retrotransposon",
+                  "non_LTR_retrotransposon", "repeat_region", "singleton","MtrunA17_Chr1",
+                  "MtrunA17_Chr2", "MtrunA17_Chr3", "MtrunA17_Chr4", "MtrunA17_Chr5", 
+                  "MtrunA17_Chr6", "MtrunA17_Chr7", "MtrunA17_Chr8", "MtrunA17_CP",
+                  "MtrunA17_MT")
+
+# Creo una lista vacía donde ir almacenando los valores de abundancia
+abundance.elements = list()
+
+# De forma iterativa, obtengo la abundancia de cada elemento como el número de filas para 
+# cada uno de ellos (obtenido a partir de la función dimensiones)
+for (i in list.elements) {
+  element = filter(count.matx, grepl(i, gene_id))
+  dimensions = dim(element)
+  numb = dimensions[1]
+  abundance.elements[i] = assign(i, numb) 
+}
+
+# Transformo la lista en un data frame de formato largo, y pongo nombre a las columnas
+abundance.matrix = gather(data.frame(abundance.elements))
+colnames(abundance.matrix) = c("element", "abundance")
+abundance.matrix
+
+# Exporto esta tabla resumen para abrirla en excel y pegarla en el documento del TFM
+write.table(abundance.matrix, file = "Abundancia_elementos_genicos_iniciales.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+```
+
+```{r - GRÁFICA DE ABUNDANCIAS DE ELEMENTOS DENTRO DE LA TABLA DE RECUENTOS}
+
+# Para visualizar las abundancias de los genes cromosómicos respecto de los elementos
+# repetidos, aislo en data.frames independientes las filas para cada tipo:
+repeated.elements = abundance.matrix[1:6,]
+chrom.genes = abundance.matrix[7:16,]
+
+# Calculo el total de elementos en cada grupo
+total.rep.elem = sum(repeated.elements$abundance)
+total.chrom.gen = sum(chrom.genes$abundance)
+
+# Imprimo el resultado
+cat("Total de elementos repetidos:", print(total.rep.elem), "\n", "Total de genes cromosómicos:", print(total.chrom.gen))
+
+# Preparo un data.frame con los resultados para luego graficarlo
+abundances.df = data.frame(type = c("elementos_repetidos", "genes_cromosómicos"),
+                                 value = c(total.rep.elem, total.chrom.gen))
+# Ordeno por valor de abundancias
+abundances.df = abundances.df %>% arrange(value)
+abundances.df
+
+# Exporto esta tabla resumen para abrirla en excel y pegarla en el documento del TFM
+write.table(abundances.df, file = "Totales_elementos_genicos_iniciales.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+# Obtengo el gráfico de sectores (Pie Chart)
+abundance.pie = ggplot(abundances.df, aes(x="", y=value, fill=type)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void() +
+  geom_label_repel(aes(label = value), position = position_stack(vjust = 0.5),
+                   size = 7, color = "black", show.legend = FALSE, 
+                   max.overlaps = 50) +
+  scale_fill_brewer(palette="Set2") +
+  ggtitle("Elementos génicos en Medicago truncatula dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+abundance.pie
+
+# Guardo el gráfico en formato png
+ggsave("Elementos_genicos_pie.png", plot = abundance.pie, width = 8, height = 6, units = "in", dpi = 300)
+
+```
+
+# **[4] FILTRADO DE LOS GENES Y VISUALIZACIÓN**
+
+Filtramos aquellos genes con recuentos nulos o menores de 10 en todas las muestras (eliminamos el ruido). Luego visualizamos con gráficos de sectores los genes filtrados vs los genes descartados, y dentro de los genes filtrados, aquellos que son elementos repetidos o genes cromosómicos.
+
+```{r - FILTRADO DE GENES DE EXPRESIÓN NULA O RESIDUAL EN TODAS LAS MUESTRAS}
+
+keep = filterByExpr(y)      # para el filtrado se usa el objeto DEGlist
+head(keep)                  # el resultado son valores booleanos para cada gen
+summary(keep)               # Obtenemos una tabla con el total de genes filtrados y descartados
+
+```
+
+```{r - VISUALIZACIÓN DE LOS ELEMENTOS FILTRADOS Y DESCARTADOS}
+
+# Creo un data.frame con los resultados del filtrado y añado la columna gene_id
+keep.df = data.frame(keep) 
+keep.df$gene_id = row.names(keep.df)  
+head(keep.df)
+
+# Creo una lista con los genes filtrados
+keepTrue = keep.df$gene_id[keep.df$keep == TRUE]  
+head(keepTrue)
+
+# Creo una lista con los genes descartados
+keepFalse = keep.df$gene_id[keep.df$keep == FALSE] 
+head(keepFalse)
+
+# Calculo el total de elementos de cada lista
+total.keep.true = length(keepTrue)
+total.keep.false = length(keepFalse)
+
+# Preparo un data.frame con los resultados para luego graficarlo
+filtrado.df = data.frame(type = c("elementos_filtrados", "elementos_descartados"),
+                                 value = c(total.keep.true, total.keep.false))
+# Ordeno por valor de abundancias
+filtrado.df = filtrado.df %>% arrange(value)
+filtrado.df
+
+# Exporto esta tabla resumen para abrirla en excel y pegarla en el documento del TFM
+write.table(filtrado.df, file = "Elementos_genicos_filtrados_y_descartados.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+# Obtengo el gráfico de sectores (Pie Chart)
+filtrado.pie = ggplot(filtrado.df, aes(x="", y=value, fill=type)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void() +
+  geom_label_repel(aes(label = value), position = position_stack(vjust = 0.5),
+                   size = 7, color = "white", show.legend = FALSE, 
+                   max.overlaps = 50) +
+  scale_fill_brewer(palette="Set1") +
+  ggtitle("Elementos génicos en Medicago truncatula dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+filtrado.pie
+
+# Guardo el gráfico en formato png
+ggsave("Elementos_filtrados_pie.png", plot = filtrado.pie, width = 8, height = 6, units = "in", dpi = 300)
+
+```
+
+```{r - TIPO DE ELEMENTOS FILTRADOS Y VISUALIZACIÓN}
+
+# Reutilizo los chunks de codigo previos:
+
+# Defino una lista con el nombre de cada elemento individual
+list.filtered.elements = c("helitron", "terminal_inverted_repeat_element", "retrotransposon",
+                  "non_LTR_retrotransposon", "repeat_region", "singleton","MtrunA17_Chr1",
+                  "MtrunA17_Chr2", "MtrunA17_Chr3", "MtrunA17_Chr4", "MtrunA17_Chr5", 
+                  "MtrunA17_Chr6", "MtrunA17_Chr7", "MtrunA17_Chr8", "MtrunA17_CP",
+                  "MtrunA17_MT")
+
+# Creo una lista vacía donde ir almacenando los valores de abundancia
+abundance.filtered.elements = list()
+
+# Genero un data.frame con la lista de genes keepTrue
+keepTrue.df = data.frame(keepTrue)
+colnames(keepTrue.df) = "gene_id" # pongo gene_id como nombre de la columna
+
+# Obtengo la abundancia de cada elemento 
+for (i in list.filtered.elements) {
+  element = filter(keepTrue.df, grepl(i, gene_id))
+  dimensions = dim(element)
+  numb = dimensions[1]
+  abundance.filtered.elements[i] = assign(i, numb) 
+}
+
+# Transformo la lista en un data frame de formato largo, y pongo nombre a las columnas
+abundance.filtered.matrix = gather(data.frame(abundance.filtered.elements))
+colnames(abundance.filtered.matrix) = c("element", "abundance")
+abundance.filtered.matrix
+
+# Separo elementos repetidos de genes cromosómicos
+repeated.filt.elements = abundance.filtered.matrix[1:6,]
+chrom.filt.genes = abundance.filtered.matrix[7:16,]
+
+# Calculo el total de elementos en cada grupo
+total.filt.rep.elem = sum(repeated.filt.elements$abundance)
+total.filt.chrom.gen = sum(chrom.filt.genes$abundance)
+
+# Imprimo el resultado
+cat("Total de elementos repetidos:", print(total.filt.rep.elem), "\n", "Total de genes cromosómicos:", print(total.filt.chrom.gen))
+
+# Preparo un data.frame con los resultados para luego graficarlo
+abundances.filt.df = data.frame(type = c("elementos_repetidos", "genes_cromosómicos"),
+                                 value = c(total.filt.rep.elem, total.filt.chrom.gen))
+
+## No ordeno por valor de abundancias para que los colores de los mismos grupos sean los mismos entre el pie no filtrado y el filtrado.
+
+# Exporto esta tabla resumen para abrirla en excel y pegarla en el documento del TFM
+write.table(abundances.filt.df, file = "Total_elementos_genicos_filtrados.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+# Obtengo el gráfico de sectores (Pie Chart)
+abundance.filt.pie = ggplot(abundances.filt.df, aes(x="", y=value, fill=type)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void() +
+  geom_label_repel(aes(label = value), position = position_stack(vjust = 0.5),
+                   size = 7, color = "black", show.legend = FALSE, 
+                   max.overlaps = 50) +
+  scale_fill_brewer(palette="Set2") +
+  ggtitle("Elementos génicos en Medicago truncatula dataset") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+abundance.filt.pie
+
+# Guardo el gráfico en formato png
+ggsave("Elementos_genicos_filtrados_pie.png", plot = abundance.filt.pie, width = 8, height = 6, units = "in", dpi = 300)
+
+
+```
+
+# **[5] NORMALIZACIÓN DE LOS RECUENTOS POR EL MÉTODO TMM Y VISUALIZACIÓN DE CPMs ANTES Y DESPUÉS DE NORMALIZAR**
+
+**LogCPM ANTES DE NORMALIZAR**
+
+Se calculan los conteos por millón (logCPMs) antes de la normalización y se grafican en un boxplot para hacer un análisis comparativo con el gráfico correspondiente a los logCPMs normalizados
+
+```{r - BOXPLOTS DE CPM SIN NORMALIZAR}
+
+# MODIFICAR EL OBJETO DEGList con el tamaño de libería acorde a los genes filtrados
+y = y[keep, keep.lib.sizes = FALSE]
+head(y)
+
+# OBTENIÓN DE CPMs ANTES DE NORMALIZAR
+y.logCPM = cpm(y, log = TRUE)
+
+# Transformo el logCPM en un data.frame para poder graficarlo
+logCPM.df = data.frame(y.logCPM)   
+
+# Y genero un vector con los nombres reducidos para cada muestra para el eje de las x,
+# donde: A = A17, s = skl, 0 = 0h, 48 = 48h, 1-4 = rep1-rep4
+nombres = c("A0.1", "A0.2", "A0.3", "A0.4", "A48.1", "A48.2",
+            "A48.3", "A48.4", "s0.1", "s0.2", "s0.3", "s0.4", 
+            "s48.1", "s48.2", "s48.3", "s48.4")    
+
+# Genero el boxplot 
+boxplot(logCPM.df, main = "Pre-normalized logCPM", names = nombres, 
+        border = "black", col = "bisque")
+
+# y lo guardo
+png("LogCPM_pre-normalizado_boxplot.png", width = 9, height = 6, 
+    res = 300, units = "in")
+boxplot(logCPM.df, main = "Pre-normalized logCPM", names = nombres, 
+        border = "black", col = "bisque")
+dev.off()
+
+```
+
+**NORMALIZACIÓN**
+
+Los recuentos se normalizan por tamaño de librerias mediante un factor de normalización calculado con el método Trimmed Mean of M values (TMM).
+
+```{r - NORMALIZACIÓN TMM}
+
+# NORMALIZACIÓN TMM 
+y = calcNormFactors(y)
+head(y)
+
+# Exporto el factor de normalización y el tamaño de librerias para abrirlo en excel y poner
+# la table en el documento del TFM
+write.table(y$samples, file = "Norm.Factors_&_Lib.Sizes.tsv", append = FALSE, sep =  " ",
+            row.names = TRUE, col.names = TRUE)
+
+```
+
+**LogCPMs DESPUÉS DE NORMALIZAR**
+
+Se calculan los conteos por millón (logCPMs) después de la normalización y se grafica su boxplot.
+
+```{r - BOXPLOTS DE CPM NORMALIZADOS}
+
+## REPITO EL CÁLCULO DE CPMs Y SU GRÁFICO BOXPLOT
+
+# uso la misma variable nombre
+Norm.logCPM = cpm(y, log = TRUE)  # 1. Calculo del logCPM
+NormlogCPM.df = data.frame(Norm.logCPM)   # 2. Transformación en un data.frame
+
+boxplot(NormlogCPM.df, main = "Normalized logCPM", 
+        names = nombres, border = "black", col = "bisque")   # graficado
+
+# y lo guardo
+png("LogCPM_post-normalizado_boxplot.png", width = 9, height = 6, 
+    res = 300, units = "in")
+boxplot(NormlogCPM.df, main = "Normalized logCPM", 
+        names = nombres, border = "black", col = "bisque")
+dev.off()
+
+
+```
+
+# **[6] ANÁLISIS DE DIVERSIDAD MUESTRAL MEDIANTE UN GRÁFICO DE ESCALADO MULTIDIMENSIONAL (MDS PLOT)**
+
+Con los datos normalizados, comprobamos cómo de similares son las muestras entre sí mediante un gráfico de escalado multidimiensional (MDS plot)
+
+```{r - GRÁFICO DE ESCALADO MULTIDIMENSIONAL PARA VER LA VARIABILIDAD MUESTRAL}
+
+# Genero mi propio vector de marcadores
+# 0 = circulo lleno, 16 = cuadrado vacío
+pch = c(0,0,16,16)
+#
+## Genero mi propio vector de colores 
+colors = rep(c("magenta3", "navy", "pink3", "cornflowerblue"), 4)
+#
+## Genero el gráfico MDS añadiendo la leyenda en el corner superior derecho
+plotMDS(y, col=colors[group], pch=pch[group], cex = 2)
+legend("topright", legend=levels(group), pch=pch, col=colors, ncol=2, cex = 0.9)
+
+# y guardo el gráfico:
+png("MDSplot_marcadores.png", width = 8, height = 6, 
+    res = 300, units = "in")
+plotMDS(y, col=colors[group], pch=pch[group], cex = 2)
+legend("topright", legend=levels(group), pch=pch, col=colors, ncol=2, cex = 0.9)
+dev.off()
+
+# VISUALIZACIÓN DE LAS RÉPLICAS
+# Como este gráfico no permite plotear el nombre de las muestras y el marcador a la vez,
+# repito el gráfico con los nombres de las muestras
+# Pero creo un nuevo vector de colores
+plotMDS(y, col=colors[group], pch=pch[group], cex = 1, labels = colnames(y$counts))
+
+# y guardo este segundo gráfico:
+png("MDSplot_nombre-x-replica.png", width = 8, height = 6, 
+    res = 300, units = "in")
+plotMDS(y, col=colors[group], pch=pch[group], cex = 1, labels = colnames(y$counts))
+dev.off()
+
+```
+
+Para comprobar si realmente la réplica 3 de la muestra A17_0h es muy diferente del resto, o si es un efecto del uso de los primeros 500 genes por parte de la función plotMDS(), se han seleccionado los 10 primeros genes que más peso tienen en A17_0h_rep3 y se han representado en un barplot
+
+```{r - COMPROBANDO RESULTADOS DEL MDS: Barplot con TOP10 genes para A17_0h_rep3}
+# Ordenar la matriz por recuentos para A17_0h_rep3, y luego por nombre
+count.matx.test1 = count.matx %>% arrange(desc(A17_0h_rep3), desc(gene_name))
+count.matx.test1
+
+# Selecciono el conjunto de los primeros 10 genes (con mayor peso en la matriz)
+count.matx.test1.top10 = count.matx.test1[1:10,]
+count.matx.test1.top10
+
+# Y obtengo sus recuentos normalizados
+count.matx.test1.top10.y = y$counts[rownames(y$counts) %in% count.matx.test1.top10$gene_id,]
+count.matx.test1.top10.y
+
+# Genero el gráfico
+barplot(count.matx.test1.top10.y, main = "TOP10 GENES EN A17_0h_rep3", 
+        col = brewer.pal(10, "Set3"))
+
+
+# Exporto el gráfico
+png("Testing_Top10Genes_A170hrep3_barplot.png", width = 8, height = 6, 
+    res = 300, units = "in")
+barplot(count.matx.test1.top10.y, main = "TOP10 GENES ARRANGED BY A17_0h_rep3", 
+        col = brewer.pal(10, "Set3"))
+dev.off()
+```
+
+Y a continuación se representan de forma individual los tres genes con más peso en A17_0h_rep3
+
+```{r}
+
+# Selecciono el primer gen con más peso para A17_0h_rep3
+count.matx.test1.top1 = count.matx.test1[1,]
+count.matx.test1.top1
+
+# Y obtengo sus recuentos normalizados
+count.matx.test1.top1.y = y$counts[rownames(y$counts) %in% 
+                                        count.matx.test1.top1$gene_id,]
+count.matx.test1.top1.y
+
+# Genero el gráfico
+barplot(count.matx.test1.top1.y, main = "MtrunA17Chr1g0213751 (TOP #1) GEN EN A17_0h_rep3")
+
+# Exporto el gráfico
+png("Testing_Top#1Gen_A170hrep3_barplot.png", width = 8, height = 6, 
+    res = 300, units = "in")
+barplot(count.matx.test1.top1.y, main = "MtrunA17Chr1g0213751 (TOP #1) GEN EN A17_0h_rep3")
+dev.off()
+
+########################################
+
+# Selecciono el segundo gen con más peso para A17_0h_rep3
+count.matx.test1.top2 = count.matx.test1[2,]
+count.matx.test1.top2
+
+# Y obtengo sus recuentos normalizados
+count.matx.test1.top2.y = y$counts[rownames(y$counts) %in% 
+                                         count.matx.test1.top2$gene_id,]
+count.matx.test1.top2.y
+
+# Genero el gráfico
+barplot(count.matx.test1.top2.y, main = "MtrunA17Chr1g0161751 (TOP #2) GEN EN A17_0h_rep3")
+
+# Exporto el gráfico
+png("Testing_Top#2Gen_A170hrep3_barplot.png", width = 8, height = 6, 
+    res = 300, units = "in")
+barplot(count.matx.test1.top2.y, main = "MtrunA17Chr1g0161751 (TOP #2) GEN EN A17_0h_rep3")
+dev.off()
+
+########################################
+
+# Selecciono el tercer gen con más peso para A17_0h_rep3
+count.matx.test1.top3 = count.matx.test1[3,]
+count.matx.test1.top3
+
+# Y obtengo sus recuentos normalizados
+count.matx.test1.top3.y = y$counts[rownames(y$counts) %in% 
+                                         count.matx.test1.top3$gene_id,]
+count.matx.test1.top3.y
+
+# Genero el gráfico
+barplot(count.matx.test1.top3.y, main = "MtrunA17Chr8g0355841 (TOP #3) GEN EN A17_0h_rep3")
+
+# Exporto el gráfico
+png("Testing_Top#3Gen_A170hrep3_barplot.png", width = 8, height = 6, 
+    res = 300, units = "in")
+barplot(count.matx.test1.top3.y, main = "MtrunA17Chr8g0355841 (TOP #3) GEN EN A17_0h_rep3")
+dev.off()
+
+
+
+```
+
+Finalmente, se genera un MSDplot con los Top10 genes en A17_0h_rep3 para ver si esta réplica sigue comportándose de forma diferente al resto de réplicas de A17_0h.
+
+```{r - COMPROBANDO RESULTADOS DEL MDS: nuevo MDSplot con TOP10 genes para A17_0h_rep3}
+
+# variables de MDS plot que podemos usar
+pch = c(0,0,16,16)
+colors = rep(c("magenta3", "navy", "pink3", "cornflowerblue"), 4)
+
+
+#Creamos dos gráficos, uno con marcadores y otro con las etiquetas
+count.matx.test1.top10.y.names.mdsPlot = plotMDS(count.matx.test1.top10.y, 
+                                       col=colors[group], 
+                                       pch=pch[group], 
+                                       cex = 1, 
+                                       labels = colnames(count.matx.test1.top10.y))
+
+count.matx.test1.top10.y.mdsPlot = plotMDS(count.matx.test1.top10.y, 
+                                 col=colors[group], 
+                                 pch=pch[group], 
+                                 cex = 2)
+legend("bottomright", legend=levels(group), pch=pch, col=colors, ncol=2, cex = 0.9)
+
+
+count.matx.test1.top10.y.names.mdsPlot
+count.matx.test1.top10.y.mdsPlot
+
+# Exportamos los gráficos en formato png
+png("MDSplot_top10_A170hrep3_name-x-replica.png", width = 8, height = 6, 
+    res = 300, units = "in")
+count.matx.test1.top10.y.names.mdsPlot = plotMDS(count.matx.test1.top10.y, 
+                                       col=colors[group], 
+                                       pch=pch[group], 
+                                       cex = 1, 
+                                       labels = colnames(count.matx.test1.top10.y))
+dev.off()
+
+png("MDSplot_top10_A170hrep3_marcadores.png", width = 8, height = 6, 
+    res = 300, units = "in")
+count.matx.test1.top10.y.mdsPlot = plotMDS(count.matx.test1.top10.y, 
+                                 col=colors[group], 
+                                 pch=pch[group], 
+                                 cex = 2)
+legend("bottomright", legend=levels(group), pch=pch, col=colors, ncol=2, cex = 0.9)
+dev.off()
+
+```
+
+# **[7] DISTRIBUCIÓN ESTADÍSTICA DE LOS DATOS Y AJUSTE DEL MODELO DE DISTRIBUCIÓN**
+
+Se estima la distribución de los datos y se ajustan a un modelo linear generalizado de cuasi-disimilitud.
+
+```{r - DISTRIBUCIÓN ESTADÍSTICA Y AJUSTE DEL MODELO}
+
+# CREACIÓN DE LA MATRIZ DE DISEÑO SIN INTERCEPTO
+# vamos a contrastar algunos grupos entre sí, y no hay un único control
+design = model.matrix(~0+group)
+colnames(design) = levels(group)
+design
+
+# Exporto la matriz de diseño para incluirla en el documento del TFM 
+write.table(design, file = "Design_Matrix.tsv", append = FALSE, sep =  " ",
+            row.names = TRUE, col.names = TRUE)
+
+# CALCULO DE DISPERSIONES
+y = estimateDisp(y, design, robust=TRUE)
+
+# comprobaciones:
+head(y)   # Aparecen los resultados en un nuevo apartado del objeto DEGList
+y$common.dispersion. 
+head(y$trended.dispersion)  
+head(y$tagwise.dispersion)
+
+# Gráfico del Coeficiente de Variabilidad Biológica que plotea estas tres dispersiones 
+plotBCV(y)
+
+# Guardo y exporto el gráfico
+png("plotBCV.png", width = 8, height = 6, 
+    res = 300, units = "in")
+plotBCV(y)
+dev.off()
+
+
+# AJUSTE DEL MODELO (GLM-QL)
+# Se guarda la matriz de datos ajustada en el objeto fit
+fit = glmQLFit(y, design, robust=TRUE)
+head(fit)   # Se crea otra sección nueva en el objeto DEGList
+#
+## Gráfico de dispersión de los datos ajustados
+plotQLDisp(fit)
+
+# Guardo y exporto el gráfico
+png("plotQLDisp.png", width = 8, height = 6, 
+    res = 300, units = "in")
+plotQLDisp(fit)
+dev.off()
+```
+
+# **[8] MATRIZ DE CONTRASTES, CONTRASTES ESTADÍSTICOS Y CORRECCIONES DEL TESTEO MÚLTIPLE**
+
+**MATRIZ DE CONTRASTES**
+
+Generamos la matriz con los contrastes que se van a realizar para determinar los genes diferencialmente expresados.
+
+Se realizará un *primer experimento informático*: determinar si el orden de los factores genotipo y tratamiento, afecta al set de genes diferencialmente expresados obtenidos. Así:
+
+-   Por un lado, vamos a contrastar los **genotipos** silvestre (A17) y mutante (*skl*) antes (0h) y después (48h) de la inoculación con *Sinorhizobium*. Por tanto, se contrastarán **skl_0h - A17_0h** (el control de cada contraste ha de estar en el denominador, por eso aparecen en la segunda parte de la ecuación), y **skl_48h - A17_48h**. De aquí en adelante, el código para estos contrastes será **G0h** y **G48h**, respectivamente.
+
+-   Por otro lado, vamos a contrastar los **tratamientos** no inoculado (0h) e inoculado (48h) con *Sinorhizobium* en el genotipo silvestre A17 y en el genotipo mutante *skl*. Eso significa hacer los dos contrastes siguientes: **A17_48h - A17_0h** y **skl_48h - skl_0h**. De aquí en adelante, el código de estos contrastes será **TA17** y **Tskl**, respectivamente.
+
+```{r - MATRIZ DE CONTRASTES}
+
+# Creo los cuatro contrastes simultáneaente para poder exportarla y usarla en el TFM
+contrast.matrix = makeContrasts(skl_0h-A17_0h, skl_48h-A17_48h, A17_48h-A17_0h, skl_48h-skl_0h, levels = design)
+contrast.matrix
+
+write.table(contrast.matrix, file = "Matrices_de_Contrastes.tsv", append = FALSE, sep =  " ",
+            row.names = TRUE, col.names = TRUE)
+
+```
+
+**CONTRASTES ESTADÍSTICOS**
+
+Realizamos los cuatro contrastes estadísticos de forma independiente. Obtendremos cuatro columnas, uno para cada estadístico: logFC, logCPM, F y pValue.
+
+```{r - CONTRASTES ESTADÍSTICOS}
+
+# Realizo los test estadísticos de forma individual para cada columna de contrast.matrix
+res.G0h = glmQLFTest(fit, contrast = contrast.matrix[, "skl_0h - A17_0h"])
+res.G48h = glmQLFTest(fit, contrast = contrast.matrix[, "skl_48h - A17_48h"])
+res.TA17 = glmQLFTest(fit, contrast = contrast.matrix[, "A17_48h - A17_0h"])
+res.Tskl = glmQLFTest(fit, contrast = contrast.matrix[, "skl_48h - skl_0h"])
+
+# compruebo las dimensiones $table para cada contraste (contiene los estadísticos)
+dim(res.G0h$table) 
+dim(res.G48h$table) 
+dim(res.TA17$table) 
+dim(res.Tskl$table)
+
+# compruebo los nombres de los estadísticos (con hacerlo para un contraste es suficiente)
+colnames(res.G0h$table)
+```
+
+**CORRECCIÓN DE BENJAMINI-HONCHBERG**
+
+Corregimos los testeos múltiples de cada contraste por el método de Benjamini-Honchberg (HB). Se incorpora una columna nueva con los p-valores ajustados (FDR).
+
+```{r - CORRECIÓN HB DE LOS TESTEOS MÚLTIPLES}
+
+# Corrección de los testeos múltiples mediante el método HB
+res.G0h_corrected = topTags(res.G0h, n = Inf)
+res.G48h_corrected = topTags(res.G48h, n = Inf)
+res.TA17_corrected = topTags(res.TA17, n = Inf)
+res.Tskl_corrected = topTags(res.Tskl, n = Inf)
+
+
+# compruebo las dimensiones $table para cada contraste (contiene los estadísticos)
+dim(res.G0h_corrected$table) 
+dim(res.G48h_corrected$table) 
+dim(res.TA17_corrected$table) 
+dim(res.Tskl_corrected$table)
+
+# compruebo los nombres de los estadísticos (con hacerlo para un contraste es suficiente)
+colnames(res.G0h_corrected$table)
+
+```
+
+# **[9] FILTRADO DE GENES SIGNIFICATIVAMENTE DIFERENCIALMENTE EXPRESADOS**
+
+En este apartado, se van a filtrar los genes con significancia estadística (según el pvadj o FDR) de entre el total de genes diferencialmente expresados, tanto supra-regulados (UP), como infra-regulados (DOWN).
+
+En este punto, voy a realizar un *segundo experimento informático*: quiero comprobar el efecto de utilizar tres niveles de restricción significativa diferentes: 0,05 \< 0,01 \< 0,001.
+
+**(I) FILTRADO POR pvadj/FDR \< 0,05**
+
+Filtramos todos aquellos genes cuya expresión sea diferencial (logFC \> \|1\|) y con un valor mínimo de significancia estadística (FDR \< 0,05)
+
+```{r - FILTRADO DE DEGs (I): SIGNIFICANCIA < 0.05}
+
+# El método decideTest() corrige directamente los testeos múltiples, por lo que usamos 
+# el objeto "res" sin corregir para hacer los filtrados.
+isde.G0h.I = decideTests(res.G0h, adjust.method = "BH", p.value = 0.05, lfc = 1)
+isde.G48h.I = decideTests(res.G48h, adjust.method = "BH", p.value = 0.05, lfc = 1)
+isde.TA17.I = decideTests(res.TA17, adjust.method = "BH", p.value = 0.05, lfc = 1)
+isde.Tskl.I = decideTests(res.Tskl, adjust.method = "BH", p.value = 0.05, lfc = 1)
+
+# revisión de resultados
+summary(isde.G0h.I)
+summary(isde.G48h.I)
+summary(isde.TA17.I)
+summary(isde.Tskl.I)
+
+# Tabla resumen
+G0h.I.df = data.frame(summary(isde.G0h.I))
+G48h.I.df = data.frame(summary(isde.G48h.I))
+TA17.I.df = data.frame(summary(isde.TA17.I))
+Tskl.I.df = data.frame(summary(isde.Tskl.I))
+
+filt.sig.I = data.frame(significancia = c("Down(0.05)", "NotSig(0.05)", "Up(0.05)"), 
+                        skl.A17_t0h = G0h.I.df[,3],
+                        skl.A17_t48h = G48h.I.df[,3], 
+                        t48h.t0h_A17 = TA17.I.df[,3], 
+                        t48h.t0h_skl = Tskl.I.df[,3])
+filt.sig.I
+
+```
+
+**(II) FILTRADO POR pvadj/FDR \< 0,01**
+
+Repetimos el filtrado, pero ahora usamos una significancia estadística mayor, un FDR más restrictivo (FDR \< 0,01)
+
+```{r - FILTRADO DE DEGs (II): SIGNIFICANCIA < 0.01}
+
+# Repetimos pero reduciendo el valor del FDR
+isde.G0h.II = decideTests(res.G0h, adjust.method = "BH", p.value = 0.01, lfc = 1)
+isde.G48h.II = decideTests(res.G48h, adjust.method = "BH", p.value = 0.01, lfc = 1)
+isde.TA17.II = decideTests(res.TA17, adjust.method = "BH", p.value = 0.01, lfc = 1)
+isde.Tskl.II = decideTests(res.Tskl, adjust.method = "BH", p.value = 0.01, lfc = 1)
+
+# revisión de resultados
+summary(isde.G0h.II)
+summary(isde.G48h.II)
+summary(isde.TA17.II)
+summary(isde.Tskl.II)
+
+# Tabla resumen
+G0h.II.df = data.frame(summary(isde.G0h.II))
+G48h.II.df = data.frame(summary(isde.G48h.II))
+TA17.II.df = data.frame(summary(isde.TA17.II))
+Tskl.II.df = data.frame(summary(isde.Tskl.II))
+
+filt.sig.II = data.frame(significancia = c("Down(0.01)", "NotSig(0.01)", "Up(0.01)"), 
+                        skl.A17_t0h = G0h.II.df[,3],
+                        skl.A17_t48h = G48h.II.df[,3], 
+                        t48h.t0h_A17 = TA17.II.df[,3], 
+                        t48h.t0h_skl = Tskl.II.df[,3])
+filt.sig.II
+```
+
+**(III) FILTRADO POR pvadj/FDR \< 0,001**
+
+Repetimos una tercera vez el filtrado, pero esta vez usando una significancia estadística así como una restricción muy elevadad (FDR \< 0,001)
+
+```{r - FILTRADO DE DEGs (II): SIGNIFICANCIA < 0.01}
+
+# Repetimos una útima vez reduciendo 10 veces el último valor del FDR usado
+isde.G0h.III = decideTests(res.G0h, adjust.method = "BH", p.value = 0.001, lfc = 1)
+isde.G48h.III = decideTests(res.G48h, adjust.method = "BH", p.value = 0.001, lfc = 1)
+isde.TA17.III = decideTests(res.TA17, adjust.method = "BH", p.value = 0.001, lfc = 1)
+isde.Tskl.III = decideTests(res.Tskl, adjust.method = "BH", p.value = 0.001, lfc = 1)
+
+# revisión de resultados
+summary(isde.G0h.III)
+summary(isde.G48h.III)
+summary(isde.TA17.III)
+summary(isde.Tskl.III)
+
+# Tabla resumen
+G0h.III.df = data.frame(summary(isde.G0h.III))
+G48h.III.df = data.frame(summary(isde.G48h.III))
+TA17.III.df = data.frame(summary(isde.TA17.III))
+Tskl.III.df = data.frame(summary(isde.Tskl.III))
+
+filt.sig.III = data.frame(significancia = c("Down(0.001)", "NotSig(0.001)", "Up(0.001)"), 
+                        skl.A17_t0h = G0h.III.df[,3],
+                        skl.A17_t48h = G48h.III.df[,3], 
+                        t48h.t0h_A17 = TA17.III.df[,3], 
+                        t48h.t0h_skl = Tskl.III.df[,3])
+filt.sig.III
+```
+
+Para facilitar la comparativa de estos tres experimentos, se genera una tabla única
+
+```{r - TABLA RESUMEN CON LOS RESULTADOS DE LOS DISTINTOS FILTRADOS}
+
+# Combino todas las tablas de resultados en una única tabla
+# y la exporto para usarla en el documento de TFM
+
+all.significances = rbind(filt.sig.I, "---", filt.sig.II, "---", filt.sig.III)
+all.significances
+
+write.table(all.significances, file = "Tabla_triple_filtrado_DEGs.tsv", append = FALSE, 
+            sep =  " ", row.names = TRUE, col.names = TRUE)
+
+```
+
+# **[10] VISUALIZACIONES (I): GRÁFICOS DE VOLCÁN (VOLCANO PLOTS)**
+
+**[A]** **EXPERIMENTO 1: FECTO DEL FACTOR GENOTIPO + EXPERIMENTO 2: EFECTO DE FDR RESTRICTIVOS**
+
+**[A.1] CONTRASTE 1: skl_0h - A17_0h**
+
+Generamos un objeto DEGList con los valores corregidos filtrados de cada objeto res.G0h_corrected, y creamos una columna para definir qué genes están sobreexpresados (UP) e infraexpresados (DOWN) significativamente, respecto de aquellos que no lo están (NoSIG)
+
+```{r - CONTRASTE 1 G0h Y SUS 3 NIVELES DE SIGNIFICANCIA ESTADÍSTICA}
+
+# PARA VALORES DE FDR < 0.05
+data.G0h.I = res.G0h_corrected$table
+data.G0h.I$DE = "NoSIG"
+data.G0h.I$DE[data.G0h.I$logFC > 1 & data.G0h.I$FDR < 0.05] = "UP"
+data.G0h.I$DE[data.G0h.I$logFC < -1 & data.G0h.I$FDR < 0.05] = "DOWN"
+head(data.G0h.I)
+
+# PARA VALORES DE FDR < 0.01
+data.G0h.II = res.G0h_corrected$table
+data.G0h.II$DE = "NO"
+data.G0h.II$DE[data.G0h.II$logFC > 1 & data.G0h.II$FDR < 0.01] = "UP"
+data.G0h.II$DE[data.G0h.II$logFC < -1 & data.G0h.II$FDR < 0.01] = "DOWN"
+head(data.G0h.II)
+
+# PARA VALORES DE FDR < 0.001
+data.G0h.III = res.G0h_corrected$table
+data.G0h.III$DE = "NO"
+data.G0h.III$DE[data.G0h.III$logFC > 1 & data.G0h.III$FDR < 0.001] = "UP"
+data.G0h.III$DE[data.G0h.III$logFC < -1 & data.G0h.III$FDR < 0.001] = "DOWN"
+head(data.G0h.III)
+
+
+```
+
+Extraemos los genes no significativos (\$DE == "NoSIG"), para usarlos en análisis downstream.
+
+```{r - EXTRACCIÓN DE DEG NO SIGNIFICATIVOS}
+
+# Primero selecciono todas las líneas con "NoSGI" en la columna DE del elemento data.0h.I
+data.G0hI.NoSig = data.frame(subset(data.G0h.I,data.G0h.I$DE == "NoSIG"))
+data.G0hI.NoSig
+
+# Segundo, creo un dataframe con gene_id y gene_names
+data.G0hI.NoSig.df = data.frame(gene_id = row.names(data.G0hI.NoSig), 
+                                gene_name = data.G0hI.NoSig$names)
+data.G0hI.NoSig.df
+
+# Finalmente, exporto el dataframe como un tsv file 
+write.table(data.G0hI.NoSig.df, file = "G0hI_NoSig_dataset.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+```
+
+A continuación, extraemos los TOP 50 genes para cada significancia estadística y los comparamos en una tabla
+
+```{r - TOP 50 G0h-DEGs SIGNIFICATIVOS EN LOS 3 NIVELES}
+
+# OBTENGO LOS PRIMEROS 50 GENES DE LA COLUMNA FDR (pvadj)
+data.G0h.I$delabel = ifelse(data.G0h.I$names %in% 
+                            head(data.G0h.I[order(data.G0h.I$FDR), "names"], 50),
+                          data.G0h.I$names, NA)
+
+data.G0h.II$delabel = ifelse(data.G0h.II$names %in% 
+                            head(data.G0h.II[order(data.G0h.II$FDR), "names"], 50),
+                          data.G0h.II$names, NA)
+
+data.G0h.III$delabel = ifelse(data.G0h.III$names %in% 
+                            head(data.G0h.III[order(data.G0h.III$FDR), "names"], 50),
+                          data.G0h.III$names, NA)
+
+
+# CREO UNA TABLA CON LOS 50 GENES DE CADA NIVEL DE SIGNIFICANCIA
+G0h.3Sig = cbind (data.G0h.I$delabel, data.G0h.II$delabel, data.G0h.III$delabel)
+colnames(G0h.3Sig) = c("G0h_0.05", "G0h_0.01", "G0h_0.001")
+G0h.3Sig[1:50,]
+
+# EXPORTO LA TABLA
+write.table(G0h.3Sig[1:50,], file = "TOP50_Labels_G0h_3Sig.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+```
+
+Dado que los primeros 50 genes para los tres niveles de significancia son los mismos, tan solo se plotea el gráfico de volcano para el contraste con FDR \< 0.001
+
+```{r - GRÁFICO DE VOLCAN PARA EL CONTRASTE 1 G0h}
+
+G0h.III.volcanPlot = ggplot(data.G0h.III, 
+                            aes(x=logFC, y=-log10(FDR), col=DE, label = delabel)) + 
+  geom_vline(xintercept = c(-1, 1), col="black", linetype="dashed")+
+  geom_hline(yintercept = c(1.30), col="black", linetype="dashed")+
+  geom_point(size=2) + 
+  scale_color_manual(values = c("cornflowerblue", "grey87", "orchid"))+
+  coord_cartesian(ylim = c(0, 10), xlim = c(-15, 15)) +
+  labs(color = 'Severe',
+       x = expression("log"[2]*"FC"), y = expression("-log"[10]*"p-value")) + 
+  scale_x_continuous(breaks = seq(-15, 15, 2)) +
+  ggtitle("CONTRASTE 1: skl_0h - A17_0h (FDR < 0,001)")+
+  geom_text_repel(max.overlaps = Inf, color = "black")+
+  theme_bw()
+
+G0h.III.volcanPlot
+
+# Guardo el gráfico en formato png
+ggsave("CONTRASTE1_VolcanoPlot_G0h_0.001.png", plot = G0h.III.volcanPlot, width = 12, height = 10, units = "in", dpi = 300)
+
+```
+
+**[A.2] CONTRASTE 2: skl_48h - A17_48h**
+
+Repetimos los pasos seguidos para el CONTRASTE 1
+
+```{r - CONTRASTE 2 G48h Y SUS 3 NIVELES DE SIGNIFICANCIA ESTADÍSTICA}
+
+# PARA VALORES DE FDR < 0.05
+data.G48h.I = res.G48h_corrected$table
+data.G48h.I$DE = "NoSIG"
+data.G48h.I$DE[data.G48h.I$logFC > 1 & data.G48h.I$FDR < 0.05] = "UP"
+data.G48h.I$DE[data.G48h.I$logFC < -1 & data.G48h.I$FDR < 0.05] = "DOWN"
+head(data.G48h.I)
+
+# PARA VALORES DE FDR < 0.01
+data.G48h.II = res.G48h_corrected$table
+data.G48h.II$DE = "NO"
+data.G48h.II$DE[data.G48h.II$logFC > 1 & data.G48h.II$FDR < 0.01] = "UP"
+data.G48h.II$DE[data.G48h.II$logFC < -1 & data.G48h.II$FDR < 0.01] = "DOWN"
+head(data.G48h.II)
+
+# PARA VALORES DE FDR < 0.001
+data.G48h.III = res.G48h_corrected$table
+data.G48h.III$DE = "NO"
+data.G48h.III$DE[data.G48h.III$logFC > 1 & data.G48h.III$FDR < 0.001] = "UP"
+data.G48h.III$DE[data.G48h.III$logFC < -1 & data.G48h.III$FDR < 0.001] = "DOWN"
+head(data.G48h.III)
+
+```
+
+Extraemos los TOP 50 genes para cada significancia estadística y los comparamos en una tabla
+
+```{r - TOP 50 G48h-DEGs SIGNIFICATIVOS EN LOS 3 NIVELES}
+
+# OBTENGO LOS PRIMEROS 50 GENES DE LA COLUMNA FDR (pvadj)
+data.G48h.I$delabel = ifelse(data.G48h.I$names %in% 
+                            head(data.G48h.I[order(data.G48h.I$FDR), "names"], 50),
+                          data.G48h.I$names, NA)
+
+data.G48h.II$delabel = ifelse(data.G48h.II$names %in% 
+                            head(data.G48h.II[order(data.G48h.II$FDR), "names"], 50),
+                          data.G48h.II$names, NA)
+
+data.G48h.III$delabel = ifelse(data.G48h.III$names %in% 
+                            head(data.G48h.III[order(data.G48h.III$FDR), "names"], 50),
+                          data.G48h.III$names, NA)
+
+
+# CREO UNA TABLA CON LOS 50 GENES DE CADA NIVEL DE SIGNIFICANCIA
+G48h.3Sig = cbind (data.G48h.I$delabel, data.G48h.II$delabel, data.G48h.III$delabel)
+colnames(G48h.3Sig) = c("G0h_0.05", "G0h_0.01", "G0h_0.001")
+G48h.3Sig[1:50,]
+
+# EXPORTO LA TABLA
+write.table(G48h.3Sig[1:50,], file = "TOP50_Labels_G48h_3Sig.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+```
+
+Dado que los primeros 50 genes para los tres niveles de significancia son los mismos, tan solo se plotea el gráfico de volcano para el contraste con FDR \< 0.001
+
+```{r - GRÁFICO DE VOLCAN PARA EL CONTRASTE 2 G48h}
+
+G48h.III.volcanPlot = ggplot(data.G48h.III, 
+                             aes(x=logFC, y=-log10(FDR), col=DE, label = delabel)) +
+  geom_vline(xintercept = c(-1, 1), col="black", linetype="dashed")+
+  geom_hline(yintercept = c(1.30), col="black", linetype="dashed")+
+  geom_point(size=2) + 
+  scale_color_manual(values = c("cornflowerblue", "grey87", "orchid"))+
+  coord_cartesian(ylim = c(0, 10), xlim = c(-15, 15)) +
+  labs(color = 'Severe',
+       x = expression("log"[2]*"FC"), y = expression("-log"[10]*"p-value")) + 
+  scale_x_continuous(breaks = seq(-15, 15, 2)) +
+  ggtitle("CONTRASTE 2: skl_48h - A17_48h (FDR < 0,001)")+
+  geom_text_repel(max.overlaps = Inf, color = "black")+
+  theme_bw()
+
+G48h.III.volcanPlot
+
+# Guardo el gráfico en formato png
+ggsave("CONTRASTE2_VolcanoPlot_G48h_0.001.png", plot = G48h.III.volcanPlot, width = 12, height = 10, units = "in", dpi = 300)
+
+```
+
+**[B]** **EXPERIMENTO 1: FECTO DEL FACTOR TRATAMIENTO + EXPERIMENTO 2: EFECTO DE FDR RESTRICTIVOS**
+
+**[B.1] CONTRASTE 3: A17_48h - A17_0h**
+
+Se vuelven a repetir los pasos seguidos para los CONTRASTES 1 y 2
+
+```{r - CONTRASTE 3 TA17 Y SUS 3 NIVELES DE SIGNIFICANCIA ESTADÍSTICA}
+
+# PARA VALORES DE FDR < 0.05
+data.TA17.I = res.TA17_corrected$table
+data.TA17.I$DE = "NoSIG"
+data.TA17.I$DE[data.TA17.I$logFC > 1 & data.TA17.I$FDR < 0.05] = "UP"
+data.TA17.I$DE[data.TA17.I$logFC < -1 & data.TA17.I$FDR < 0.05] = "DOWN"
+head(data.TA17.I)
+
+# PARA VALORES DE FDR < 0.01
+data.TA17.II = res.TA17_corrected$table
+data.TA17.II$DE = "NO"
+data.TA17.II$DE[data.TA17.II$logFC > 1 & data.TA17.II$FDR < 0.01] = "UP"
+data.TA17.II$DE[data.TA17.II$logFC < -1 & data.TA17.II$FDR < 0.01] = "DOWN"
+head(data.TA17.II)
+
+# PARA VALORES DE FDR < 0.001
+data.TA17.III = res.TA17_corrected$table
+data.TA17.III$DE = "NO"
+data.TA17.III$DE[data.TA17.III$logFC > 1 & data.TA17.III$FDR < 0.001] = "UP"
+data.TA17.III$DE[data.TA17.III$logFC < -1 & data.TA17.III$FDR < 0.001] = "DOWN"
+head(data.TA17.III)
+
+```
+
+Extraemos los TOP 50 genes para cada significancia estadística y los comparamos en una tabla
+
+```{r - TOP 50 G48h-DEGs SIGNIFICATIVOS EN LOS 3 NIVELES}
+
+# OBTENGO LOS PRIMEROS 50 GENES DE LA COLUMNA FDR (pvadj)
+data.TA17.I$delabel = ifelse(data.TA17.I$names %in% 
+                            head(data.TA17.I[order(data.TA17.I$FDR), "names"], 50),
+                          data.TA17.I$names, NA)
+
+data.TA17.II$delabel = ifelse(data.TA17.II$names %in% 
+                            head(data.TA17.II[order(data.TA17.II$FDR), "names"], 50),
+                          data.TA17.II$names, NA)
+
+data.TA17.III$delabel = ifelse(data.TA17.III$names %in% 
+                            head(data.TA17.III[order(data.TA17.III$FDR), "names"], 50),
+                          data.TA17.III$names, NA)
+
+
+# CREO UNA TABLA CON LOS 50 GENES DE CADA NIVEL DE SIGNIFICANCIA
+TA17.3Sig = cbind (data.TA17.I$delabel, data.TA17.II$delabel, data.TA17.III$delabel)
+colnames(TA17.3Sig) = c("G0h_0.05", "G0h_0.01", "G0h_0.001")
+TA17.3Sig[1:50,]
+
+# EXPORTO LA TABLA
+write.table(TA17.3Sig[1:50,], file = "TOP50_Labels_TA17_3Sig.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+```
+
+Dado que los primeros 50 genes para los tres niveles de significancia son los mismos, tan solo se plotea el gráfico de volcano para el contraste con FDR \< 0.05.
+
+```{r - GRÁFICO DE VOLCAN PARA EL CONTRASTE 3 TA17}
+
+TA17.III.volcanPlot = ggplot(data.TA17.III, 
+                             aes(x=logFC, y=-log10(FDR), col=DE, label = delabel)) +
+  geom_vline(xintercept = c(-1, 1), col="black", linetype="dashed")+
+  geom_hline(yintercept = c(1.30), col="black", linetype="dashed")+
+  geom_point(size=2) + 
+  scale_color_manual(values = c("cornflowerblue", "grey87", "orchid"))+
+  coord_cartesian(ylim = c(0, 10), xlim = c(-15, 15)) +
+  labs(color = 'Severe',
+       x = expression("log"[2]*"FC"), y = expression("-log"[10]*"p-value")) + 
+  scale_x_continuous(breaks = seq(-15, 15, 2)) +
+  ggtitle("CONTRASTE 3: A17_48h - A17_0h (FDR < 0,001)")+
+  geom_text_repel(max.overlaps = Inf, color = "black")+
+  theme_bw()
+
+TA17.III.volcanPlot
+
+# Guardo el gráfico en formato png
+ggsave("CONTRASTE3_VolcanoPlot_TA17_0.001.png", plot = TA17.III.volcanPlot, width = 12, height = 10, units = "in", dpi = 300)
+
+```
+
+**[B.2] CONTRASTE 4: skl_48h - skl_0h**
+
+Se vuelven a repetir los pasos seguidos para los tres contrastes anteriores
+
+```{r - CONTRASTE 4 Tskl Y SUS 3 NIVELES DE SIGNIFICANCIA ESTADÍSTICA}
+
+# PARA VALORES DE FDR < 0.05
+data.Tskl.I = res.Tskl_corrected$table
+data.Tskl.I$DE = "NoSIG"
+data.Tskl.I$DE[data.Tskl.I$logFC > 1 & data.Tskl.I$FDR < 0.05] = "UP"
+data.Tskl.I$DE[data.Tskl.I$logFC < -1 & data.Tskl.I$FDR < 0.05] = "DOWN"
+head(data.Tskl.I)
+
+# PARA VALORES DE FDR < 0.01
+data.Tskl.II = res.Tskl_corrected$table
+data.Tskl.II$DE = "NO"
+data.Tskl.II$DE[data.Tskl.II$logFC > 1 & data.Tskl.II$FDR < 0.01] = "UP"
+data.Tskl.II$DE[data.Tskl.II$logFC < -1 & data.Tskl.II$FDR < 0.01] = "DOWN"
+head(data.Tskl.II)
+
+# PARA VALORES DE FDR < 0.001
+data.Tskl.III = res.Tskl_corrected$table
+data.Tskl.III$DE = "NO"
+data.Tskl.III$DE[data.Tskl.III$logFC > 1 & data.Tskl.III$FDR < 0.001] = "UP"
+data.Tskl.III$DE[data.Tskl.III$logFC < -1 & data.Tskl.III$FDR < 0.001] = "DOWN"
+head(data.Tskl.III)
+
+```
+
+Extraemos los TOP 50 genes para cada significancia estadística y los comparamos en una tabla
+
+```{r - TOP 50 G48h-DEGs SIGNIFICATIVOS EN LOS 3 NIVELES}
+
+# OBTENGO LOS PRIMEROS 50 GENES DE LA COLUMNA FDR (pvadj)
+data.Tskl.I$delabel = ifelse(data.Tskl.I$names %in% 
+                            head(data.Tskl.I[order(data.Tskl.I$FDR), "names"], 50),
+                          data.Tskl.I$names, NA)
+
+data.Tskl.II$delabel = ifelse(data.Tskl.II$names %in% 
+                            head(data.Tskl.II[order(data.Tskl.II$FDR), "names"], 50),
+                          data.Tskl.II$names, NA)
+
+data.Tskl.III$delabel = ifelse(data.Tskl.III$names %in% 
+                            head(data.Tskl.III[order(data.Tskl.III$FDR), "names"], 50),
+                          data.Tskl.III$names, NA)
+
+
+# CREO UNA TABLA CON LOS 50 GENES DE CADA NIVEL DE SIGNIFICANCIA
+Tskl.3Sig = cbind (data.Tskl.I$delabel, data.Tskl.II$delabel, data.Tskl.III$delabel)
+colnames(Tskl.3Sig) = c("G0h_0.05", "G0h_0.01", "G0h_0.001")
+Tskl.3Sig[1:50,]
+
+# EXPORTO LA TABLA
+write.table(Tskl.3Sig[1:50,], file = "TOP50_Labels_Tskl_3Sig.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+```
+
+Dado que los primeros 50 genes para los tres niveles de significancia son los mismos, tan solo se plotea el gráfico de volcano para el contraste con FDR \< 0.05.
+
+```{r - GRÁFICO DE VOLCAN PARA EL CONTRASTE 4 Tskl}
+
+Tskl.III.volcanPlot = ggplot(data.Tskl.III, 
+                             aes(x=logFC, y=-log10(FDR), col=DE, label = delabel)) +
+  geom_vline(xintercept = c(-1, 1), col="black", linetype="dashed")+
+  geom_hline(yintercept = c(1.30), col="black", linetype="dashed")+
+  geom_point(size=2) + 
+  scale_color_manual(values = c("cornflowerblue", "grey87", "orchid"))+
+  coord_cartesian(ylim = c(0, 10), xlim = c(-15, 15)) +
+  labs(color = 'Severe',
+       x = expression("log"[2]*"FC"), y = expression("-log"[10]*"p-value")) + 
+  scale_x_continuous(breaks = seq(-15, 15, 2)) +
+  ggtitle("CONTRASTE 4: skl_48h - skl_0h (FDR < 0,001)")+
+  geom_text_repel(max.overlaps = Inf, color = "black")+
+  theme_bw()
+
+Tskl.III.volcanPlot
+
+# Guardo el gráfico en formato png
+ggsave("CONTRASTE4_VolcanoPlot_Tskl_0.001.png", plot = Tskl.III.volcanPlot, width = 12, height = 10, units = "in", dpi = 300)
+
+```
+
+Comprobamos que los resultados de los volcano plot son correctos, utilizando un subset de genes y visualizando su DEG entre todas las muestras.
+
+```{r - COMPROBAMOS LOS RESULTADOS DEL VOLCANO PLOT}
+
+# TESTING A COUPLE OF GENES FOR G0h
+MtYSL4= count.matx[count.matx$gene_name == "MtYSL4", ]
+MtYSL4.y = y$counts[rownames(y$counts) %in% MtYSL4$gene_id,]
+barplot(MtYSL4.y, main = "MtYSL4_G0h")
+
+MtCYP83G1v1a = count.matx[count.matx$gene_name == "MtCYP83G1v1a", ]
+MtCYP83G1v1a.y = y$counts[rownames(y$counts) %in% MtCYP83G1v1a$gene_id,]
+barplot(MtCYP83G1v1a.y,  main = "MtCYP83G1v1a_G0h")
+
+# TESTING A COUPLE OF GENES FOR G48h
+MtNCR158 = count.matx[count.matx$gene_name == "MtNCR158", ]
+MtNCR158.y = y$counts[rownames(y$counts) %in% MtNCR158$gene_id,]
+barplot(MtNCR158.y,  main = "MtNCR158_G48h")
+
+MtENOD40 = count.matx[count.matx$gene_name == "MtENOD40", ]
+MtENOD40.y = y$counts[rownames(y$counts) %in% MtENOD40$gene_id,]
+barplot(MtENOD40.y,  main = "MtENOD40_G48h")
+
+# TESTING A COUPLE OF GENES FOR TA17
+MtENOD11 = count.matx[count.matx$gene_name == "MtENOD11", ]
+MtENOD11.y = y$counts[rownames(y$counts) %in% MtENOD11$gene_id,]
+barplot(MtENOD11.y,  main = "MtENOD11_TA17")
+
+MtN19 = count.matx[count.matx$gene_name == "MtN19", ]
+MtN19.y = y$counts[rownames(y$counts) %in% MtN19$gene_id,]
+barplot(MtN19.y,  main = "MtN19_TA17")
+
+# TESTING A COUPLE OF GENES FOR Tskl
+MtNodGRP32= count.matx[count.matx$gene_name == "MtNodGRP32", ]
+MtNodGRP32.y = y$counts[rownames(y$counts) %in% MtNodGRP32$gene_id,]
+barplot(MtNodGRP32.y,  main = "MtNodGRP32_Tskl")
+
+MtN6 = count.matx[count.matx$gene_name == "MtN6", ]
+MtN6.y = y$counts[rownames(y$counts) %in% MtN6$gene_id,]
+barplot(MtN6.y,  main = "MtN6_Tskl")
+
+##############################
+
+# Exporto los gráficos
+png("G0h_VolcanoTest1.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtYSL4.y, main = "MtYSL4_G0h")
+dev.off()
+
+png("G0h_VolcanoTest2.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtCYP83G1v1a.y,  main = "MtCYP83G1v1a_G0h")
+dev.off()
+
+png("G48h_VolcanoTest1.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtNCR158.y,  main = "MtNCR158_G48h")
+dev.off()
+
+png("G48h_VolcanoTest2.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtENOD40.y,  main = "MtENOD40_G48h")
+dev.off()
+
+png("TA17_VolcanoTest1.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtENOD11.y,  main = "MtENOD11_TA17")
+dev.off()
+
+png("TA17_VolcanoTest2.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtN19.y,  main = "MtN19_TA17")
+dev.off()
+
+png("Tskl_VolcanoTest1.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtNodGRP32.y,  main = "MtNodGRP32_Tskl")
+dev.off()
+
+png("Tskl_VolcanoTest2.png", width = 8, height = 6, res = 300, units = "in")
+barplot(MtN6.y,  main = "MtN6_Tskl")
+dev.off()
+```
+
+# **[11] VISUALIZACIONES (II): GRÁFICOS UPSET (UPSET PLOTS)**
+
+**[A]** **EXPERIMENTO 1: FECTO DEL FACTOR GENOTIPO + EXPERIMENTO 2: EFECTO DE FDR RESTRICTIVOS**
+
+Como nos interesa determinar genes comunes e independientes a tiempo 0h y 48h cuando contrastamos los genotipos, se calcula un UpSet plot común para los contrastes 1 (G0h) y 2 (G48h). Como vamos a ver el impacto de usar distintos niveles de significancia, se generarán tres UpSet plots independientes.
+
+**[A.1] EFECTO GENOTIPO FDR \< 0,05**
+
+Contraste 1 G0h (skl_0h - A17_0h) vs Contraste 2 G48h (skl_48h - A17_48h) usando FDR \< 0,05
+
+```{r - EFECTO GENOTIPO + FDR < 0,05}
+
+# Se crean por separado dos listas de genes UP y DOWN, una por tratamiento (0h, 48h)
+# G0h
+data.G0h.I.Upfilt = data.frame(subset(data.G0h.I, data.G0h.I$DE == "UP"))
+data.G0h.I.Downfilt = data.frame(subset(data.G0h.I, data.G0h.I$DE == "DOWN"))
+
+# G48h
+data.G48h.I.Upfilt = data.frame(subset(data.G48h.I, data.G48h.I$DE == "UP"))
+data.G48h.I.Downfilt = data.frame(subset(data.G48h.I, data.G48h.I$DE == "DOWN"))
+
+
+# A continuación se crea el objeto lista final con los genes de los cuatro 
+# data.frame filtrados para graficar el EFECTO GENOTIPO 
+gntp.I = c(sklvsA17.0h.I.up = list(data.G0h.I.Upfilt$names),
+      sklvsA17.0h.I.down = list(data.G0h.I.Downfilt$names),
+      sklvsA17L.48h.I.up = list(data.G48h.I.Upfilt$names),
+      sklvsA17.48h.I.down = list(data.G48h.I.Downfilt$names)
+      )
+
+# Finalmente, se genera el gráfico UpSet
+gntp.I.upset = upset(fromList(gntp.I), matrix.color = "blue", sets.bar.color = "grey")
+gntp.I.upset
+
+# Exporto el gráfico
+png("UpSet_Genotipo_0.05.png", width = 8, height = 6, res = 300, units = "in")
+upset(fromList(gntp.I), matrix.color = "blue", sets.bar.color = "grey")
+dev.off()
+```
+
+**[A.2] EFECTO GENOTIPO FDR \< 0,01**
+
+Contraste 1 G0h (skl_0h - A17_0h) vs Contraste 2 G48h (skl_48h - A17_48h) usando FDR \< 0,01
+
+```{r - EFECTO GENOTIPO + FDR < 0,01}
+
+# Se crean por separado dos listas de genes UP y DOWN, una por tratamiento (0h, 48h)
+# G0h
+data.G0h.II.Upfilt = data.frame(subset(data.G0h.II, data.G0h.II$DE == "UP"))
+data.G0h.II.Downfilt = data.frame(subset(data.G0h.II, data.G0h.II$DE == "DOWN"))
+
+# G48h
+data.G48h.II.Upfilt = data.frame(subset(data.G48h.II, data.G48h.II$DE == "UP"))
+data.G48h.II.Downfilt = data.frame(subset(data.G48h.II, data.G48h.II$DE == "DOWN"))
+
+
+# A continuación se crea el objeto lista final con los genes de los cuatro 
+# data.frame filtrados para graficar el EFECTO GENOTIPO 
+gntp.II = c(sklvsA17.0h.II.up = list(data.G0h.II.Upfilt$names),
+      sklvsA17.0h.II.down = list(data.G0h.II.Downfilt$names),
+      sklvsA17.48h.II.up = list(data.G48h.II.Upfilt$names),
+      sklvsA17.48h.II.down = list(data.G48h.II.Downfilt$names)
+      )
+
+# Finalmente, se genera el gráfico UpSet
+gntp.II.upset = upset(fromList(gntp.II), matrix.color = "blue", sets.bar.color = "grey")
+gntp.II.upset
+
+
+# Exporto el gráfico
+png("UpSet_Genotipo_0.01.png", width = 8, height = 6, res = 300, units = "in")
+upset(fromList(gntp.II), matrix.color = "blue", sets.bar.color = "grey")
+dev.off()
+```
+
+**[A.3] EFECTO GENOTIPO FDR \< 0,001**
+
+Contraste 1 G0h (skl_0h - A17_0h) vs Contraste 2 G48h (skl_48h - A17_48h) usando FDR \< 0,001
+
+```{r - EFECTO GENOTIPO + FDR < 0,001}
+
+# Se crean por separado dos listas de genes UP y DOWN, una por tratamiento (0h, 48h)
+# G0h
+data.G0h.III.Upfilt = data.frame(subset(data.G0h.III, data.G0h.III$DE == "UP"))
+data.G0h.III.Downfilt = data.frame(subset(data.G0h.III, data.G0h.III$DE == "DOWN"))
+
+# G48h
+data.G48h.III.Upfilt = data.frame(subset(data.G48h.III, data.G48h.III$DE == "UP"))
+data.G48h.III.Downfilt = data.frame(subset(data.G48h.III, data.G48h.III$DE == "DOWN"))
+
+
+# A continuación se crea el objeto lista final con los genes de los cuatro 
+# data.frame filtrados para graficar el EFECTO GENOTIPO 
+gntp.III = c(sklvsA17.0h.III.up = list(data.G0h.III.Upfilt$names),
+      sklvsA17.0h.III.down = list(data.G0h.III.Downfilt$names),
+      sklvsA17.48h.III.up = list(data.G48h.III.Upfilt$names),
+      sklvsA17.48h.III.down = list(data.G48h.III.Downfilt$names)
+      )
+
+# Finalmente, se genera el gráfico UpSet
+gntp.III.upset = upset(fromList(gntp.III), matrix.color = "blue", sets.bar.color = "grey")
+gntp.III.upset
+
+# Exporto el gráfico
+png("UpSet_Genotipo_0.001.png", width = 8, height = 6, res = 300, units = "in")
+upset(fromList(gntp.III), matrix.color = "blue", sets.bar.color = "grey")
+dev.off()
+
+```
+
+Exportamos los genes de cada uno de estos grupos de los tres upset plots para el efecto genotipo. De aquí se seleccionarán los grupos de genes que se usarán para los análisis de promotores.
+
+La fuente de donde he sacado el pipeline de este paso es: <https://stackoverflow.com/questions/75990226/add-labels-to-upset-plot-so-the-values-of-intersection-would-be-visible-along-t>
+
+```{r - EXTRACCIÓN LISTA DE GENES DE LOS GRUPOS DEL UPSET PLOT GENOTIPOS}
+
+# Función que se obtendrá para obtener una tabla de booleanos del gráfico UpSet
+from_list <- function(list_data) {
+  members = unique(unlist(list_data))
+  data.frame(
+    lapply(list_data, function(set) members %in% set),
+    row.names=members,
+    check.names=FALSE
+  )
+}
+
+# EFECTO GENOTIPO CON FDR < 0,05
+
+# Uso la función para crear la matriz de booleanos a partir de la lista ploteada
+matrix.gntp.I.boolean = from_list(gntp.I)
+matrix.gntp.I.boolean$gene_name = rownames(matrix.gntp.I.boolean)
+head(matrix.gntp.I.boolean)
+dim(matrix.gntp.I.boolean)
+
+# En $New_data aparece la misma tabla pero en binario (0/1) pero sin nombre asociado
+# Por lo que uso la matriz de booleanos (mismas dimentsiones) para coger los nombres 
+# de los genes en la matríz binaria
+matrix.gntp.I.names.binary = gntp.I.upset$New_data
+rownames(matrix.gntp.I.names.binary) = matrix.gntp.I.boolean$gene_name
+head(matrix.gntp.I.names.binary)
+dim(matrix.gntp.I.names.binary)
+
+# La exporto como .tsv
+write.table(matrix.gntp.I.names.binary, file = "UPsetPlot_genotype.I_binary-table.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+####################################
+
+# EFECTO GENOTIPO CON FDR < 0,01
+
+# Uso la función para crear la matriz de booleanos a partir de la lista ploteada
+matrix.gntp.II.boolean = from_list(gntp.II)
+matrix.gntp.II.boolean$gene_name = rownames(matrix.gntp.II.boolean)
+head(matrix.gntp.II.boolean)
+dim(matrix.gntp.II.boolean)
+
+# En $New_data aparece la misma tabla pero en binario (0/1) pero sin nombre asociado
+# Por lo que uso la matriz de booleanos (mismas dimentsiones) para coger los nombres 
+# de los genes en la matríz binaria
+matrix.gntp.II.names.binary = gntp.II.upset$New_data
+rownames(matrix.gntp.II.names.binary) = matrix.gntp.II.boolean$gene_name
+head(matrix.gntp.II.names.binary)
+dim(matrix.gntp.II.names.binary)
+
+# La exporto como .tsv
+write.table(matrix.gntp.II.names.binary, 
+            file = "UPsetPlot_genotype.II_binary-table.tsv", append = FALSE, sep =  " ",
+            row.names = TRUE, col.names = TRUE)
+
+######################################
+
+# EFECTO GENOTIPO CON FDR < 0,001
+
+# Uso la función para crear la matriz de booleanos a partir de la lista ploteada
+matrix.gntp.III.boolean = from_list(gntp.III)
+matrix.gntp.III.boolean$gene_name = rownames(matrix.gntp.III.boolean)
+head(matrix.gntp.III.boolean)
+dim(matrix.gntp.III.boolean)
+
+# En $New_data aparece la misma tabla pero en binario (0/1) pero sin nombre asociado
+# Por lo que uso la matriz de booleanos (mismas dimentsiones) para coger los nombres 
+# de los genes en la matríz binaria
+matrix.gntp.III.names.binary = gntp.III.upset$New_data
+rownames(matrix.gntp.III.names.binary) = matrix.gntp.III.boolean$gene_name
+head(matrix.gntp.III.names.binary)
+dim(matrix.gntp.III.names.binary)
+
+# La exporto como .tsv
+write.table(matrix.gntp.III.names.binary, 
+            file = "UPsetPlot_genotype.III_binary-table.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+```
+
+**[B]** **EXPERIMENTO 1: FECTO DEL FACTOR TRATAMIENTO + EXPERIMENTO 2: EFECTO DE FDR RESTRICTIVOS**
+
+Repetimos para los dos contrastes por tratamientos.
+
+**[B.1] EFECTO TRATAMIENTO FDR \< 0,05**
+
+Contraste 3 A17 (A17_48h - A17_0h) vs Contraste 4 Tskl (skl_48h - skl_0h) usando FDR \< 0,05
+
+```{r - EFECTO TRATAMIENTO + FDR < 0,05}
+
+# Se crean por separado dos listas de genes UP y DOWN, una por genoripo (A17, skl)
+# TA17
+data.TA17.I.Upfilt = data.frame(subset(data.TA17.I, data.TA17.I$DE == "UP"))
+data.TA17.I.Downfilt = data.frame(subset(data.TA17.I, data.TA17.I$DE == "DOWN"))
+
+# Tskl
+data.Tskl.I.Upfilt = data.frame(subset(data.Tskl.I, data.Tskl.I$DE == "UP"))
+data.Tskl.I.Downfilt = data.frame(subset(data.Tskl.I, data.Tskl.I$DE == "DOWN"))
+
+
+# A continuación se crea el objeto lista final con los genes de los cuatro 
+# data.frame filtrados para graficar el EFECTO TRATAMIENTO (NODULACIÓN)
+nod.I = c(t48hvst0h.A17.I.up = list(data.TA17.I.Upfilt$names),
+      t48hvst0h.A17.I.down = list(data.TA17.I.Downfilt$names),
+      t48hvst0h.skl.I.up = list(data.Tskl.I.Upfilt$names),
+      t48hvst0h.skl.I.down = list(data.Tskl.I.Downfilt$names)
+      )
+
+# Finalmente, se genera el gráfico UpSet
+nod.I.upset = upset(fromList(nod.I), matrix.color = "blue", sets.bar.color = "grey")
+nod.I.upset
+
+# Exporto el gráfico
+png("UpSet_Tratamiento_0.05.png", width = 8, height = 6, res = 300, units = "in")
+upset(fromList(nod.I), matrix.color = "blue", sets.bar.color = "grey")
+dev.off()
+```
+
+**[B.2] EFECTO TRATAMIENTO FDR \< 0,01**
+
+Contraste 3 A17 (A17_48h - A17_0h) vs Contraste 4 Tskl (skl_48h - skl_0h) usando FDR \< 0,01
+
+```{r - EFECTO TRATAMIENTO + FDR < 0,01}
+
+# Se crean por separado dos listas de genes UP y DOWN, una por genoripo (A17, skl)
+# TA17
+data.TA17.II.Upfilt = data.frame(subset(data.TA17.II, data.TA17.II$DE == "UP"))
+data.TA17.II.Downfilt = data.frame(subset(data.TA17.II, data.TA17.II$DE == "DOWN"))
+
+# Tskl
+data.Tskl.II.Upfilt = data.frame(subset(data.Tskl.II, data.Tskl.II$DE == "UP"))
+data.Tskl.II.Downfilt = data.frame(subset(data.Tskl.II, data.Tskl.II$DE == "DOWN"))
+
+
+# A continuación se crea el objeto lista final con los genes de los cuatro 
+# data.frame filtrados para graficar el EFECTO TRATAMIENTO (NODULACIÓN)
+nod.II = c(t48hvst0h.A17.II.up = list(data.TA17.II.Upfilt$names),
+      t48hvst0h.A17.II.down = list(data.TA17.II.Downfilt$names),
+      t48hvst0h.skl.II.up = list(data.Tskl.II.Upfilt$names),
+      t48hvst0h.skl.II.down = list(data.Tskl.II.Downfilt$names)
+      )
+
+# Finalmente, se genera el gráfico UpSet
+nod.II.upset = upset(fromList(nod.II), matrix.color = "blue", sets.bar.color = "grey")
+nod.II.upset
+
+# Exporto el gráfico
+png("UpSet_Tratamiento_0.01.png", width = 8, height = 6, res = 300, units = "in")
+upset(fromList(nod.II), matrix.color = "blue", sets.bar.color = "grey")
+dev.off()
+```
+
+**[B.3] EFECTO TRATAMIENTO FDR \< 0,001**
+
+Contraste 3 A17 (A17_48h - A17_0h) vs Contraste 4 Tskl (skl_48h - skl_0h) usando FDR \< 0,001
+
+```{r - EFECTO TRATAMIENTO + FDR < 0,001}
+
+# Se crean por separado dos listas de genes UP y DOWN, una por genoripo (A17, skl)
+# TA17
+data.TA17.III.Upfilt = data.frame(subset(data.TA17.III, data.TA17.III$DE == "UP"))
+data.TA17.III.Downfilt = data.frame(subset(data.TA17.III, data.TA17.III$DE == "DOWN"))
+
+# Tskl
+data.Tskl.III.Upfilt = data.frame(subset(data.Tskl.III, data.Tskl.III$DE == "UP"))
+data.Tskl.III.Downfilt = data.frame(subset(data.Tskl.III, data.Tskl.III$DE == "DOWN"))
+
+
+# A continuación se crea el objeto lista final con los genes de los cuatro 
+# data.frame filtrados para graficar el EFECTO TRATAMIENTO (NODULACIÓN)
+nod.III = c(t48hvst0h.A17.III.up = list(data.TA17.III.Upfilt$names),
+      t48hvst0h.A17.III.down = list(data.TA17.III.Downfilt$names),
+      t48hvst0h.skl.III.up = list(data.Tskl.III.Upfilt$names),
+      t48hvst0h.skl.III.down = list(data.Tskl.III.Downfilt$names)
+      )
+
+# Finalmente, se genera el gráfico UpSet
+nod.III.upset = upset(fromList(nod.III), matrix.color = "blue", sets.bar.color = "grey")
+nod.III.upset
+
+# Exporto el gráfico
+png("UpSet_Tratamiento_0.001.png", width = 8, height = 6, res = 300, units = "in")
+upset(fromList(nod.III), matrix.color = "blue", sets.bar.color = "grey")
+dev.off()
+```
+
+Exportamos los genes de cada uno de estos grupos de los tres upset plots para el efecto tratamiento, de la misma manera que hicimos para el efecto genotipo.
+
+```{r - EXTRACCIÓN LISTA DE GENES DE LOS GRUPOS DEL UPSET PLOT TRATAMIENTOS}
+
+# Función que se obtendrá para obtener una tabla de booleanos del gráfico UpSet
+from_list <- function(list_data) {
+  members = unique(unlist(list_data))
+  data.frame(
+    lapply(list_data, function(set) members %in% set),
+    row.names=members,
+    check.names=FALSE
+  )
+}
+
+# EFECTO TRATAMIENTO CON FDR < 0,05
+
+# Uso la función para crear la matriz de booleanos a partir de la lista ploteada
+matrix.nod.I.boolean = from_list(nod.I)
+matrix.nod.I.boolean$gene_name = rownames(matrix.nod.I.boolean)
+head(matrix.nod.I.boolean)
+dim(matrix.nod.I.boolean)
+
+# En $New_data aparece la misma tabla pero en binario (0/1) pero sin nombre asociado
+# Por lo que uso la matriz de booleanos (mismas dimentsiones) para coger los nombres 
+# de los genes en la matríz binaria
+matrix.nod.I.names.binary = nod.I.upset$New_data
+rownames(matrix.nod.I.names.binary) = matrix.nod.I.boolean$gene_name
+head(matrix.nod.I.names.binary)
+dim(matrix.nod.I.names.binary)
+
+# La exporto como .tsv
+write.table(matrix.nod.I.names.binary, file = "UPsetPlot_treatment.I_binary-table.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+####################################
+
+# EFECTO TRATAMIENTO CON FDR < 0,01
+
+# Uso la función para crear la matriz de booleanos a partir de la lista ploteada
+matrix.nod.II.boolean = from_list(nod.II)
+matrix.nod.II.boolean$gene_name = rownames(matrix.nod.II.boolean)
+head(matrix.nod.II.boolean)
+dim(matrix.nod.II.boolean)
+
+# En $New_data aparece la misma tabla pero en binario (0/1) pero sin nombre asociado
+# Por lo que uso la matriz de booleanos (mismas dimentsiones) para coger los nombres 
+# de los genes en la matríz binaria
+matrix.nod.II.names.binary = nod.II.upset$New_data
+rownames(matrix.nod.II.names.binary) = matrix.nod.II.boolean$gene_name
+head(matrix.nod.II.names.binary)
+dim(matrix.nod.II.names.binary)
+
+# La exporto como .tsv
+write.table(matrix.nod.II.names.binary, 
+            file = "UPsetPlot_treatment.II_binary-table.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+######################################
+
+# EFECTO TRATAMIENTO CON FDR < 0,001
+
+# Uso la función para crear la matriz de booleanos a partir de la lista ploteada
+matrix.nod.III.boolean = from_list(nod.III)
+matrix.nod.III.boolean$gene_name = rownames(matrix.nod.III.boolean)
+head(matrix.nod.III.boolean)
+dim(matrix.nod.III.boolean)
+
+# En $New_data aparece la misma tabla pero en binario (0/1) pero sin nombre asociado
+# Por lo que uso la matriz de booleanos (mismas dimentsiones) para coger los nombres 
+# de los genes en la matríz binaria
+matrix.nod.III.names.binary = nod.III.upset$New_data
+rownames(matrix.nod.III.names.binary) = matrix.nod.III.boolean$gene_name
+head(matrix.nod.III.names.binary)
+dim(matrix.nod.III.names.binary)
+
+# La exporto como .tsv
+write.table(matrix.nod.III.names.binary, 
+            file = "UPsetPlot_treatment.III_binary-table.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+```
+
+# **[12] CLUSTERING Y HEAT MAPS**
+
+Solo estamos intersados en ver las agrupaciones de genes que están sobreexpresados en A17 (e infraexpresados en skl) tanto a tiempo 0h com 48h, para los distintos niveles de significancia. Por tanto, sólo se van a generar los heat maps del contraste GENOTIPOS para genes "DOWN" (seleccionamos aquellos down en skl, que son los up en A17), usando pvadj\<0,05, \<0,01, y \<0,001.
+
+**[1] EFECTO GENOTIPO G0h (skl_0h - A17_0h) + SIGNIFICANCIA FDR \< 0,05**
+
+```{r - EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,05}
+
+# (1) A partir de los objetos res_corrected, creamos un objeto con los genes significativamente infraexpresados en skl (up en A17)
+DEG.down.G0h.I = res.G0h_corrected$table[res.G0h_corrected$table$FDR < 0.05 &
+                                     res.G0h_corrected$table$logFC < -1,]
+dim(DEG.down.G0h.I)
+
+
+# (2) A continuación, extraemos sus recuentos normalizados y ajustados
+DEG.down.G0h.I.count = y[y$genes$names %in% DEG.down.G0h.I$names,]
+
+head(DEG.down.G0h.I.count)
+dim(DEG.down.G0h.I.count$counts)
+
+# (3) Ahora se definen los clusters (para colorearlos luego en el heatmap)
+DG0h.I_sample_col = data.frame(sample = group)
+rownames(DG0h.I_sample_col) = colnames(DEG.down.G0h.I.count)
+
+DG0h.I_sample_col
+
+# (4) Obtención del heat map
+heatmap.DG0h.I = pheatmap(DEG.down.G0h.I.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG0h.I_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_0h_vs_A17_0h_p<0.001")
+heatmap.DG0h.I
+
+```
+
+Exportamos los mapas de calor:
+
+```{r - EXPORTAR GRÁFICOS: EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,05}
+
+png("HeatMap_downDEG_skl_0h_vs_A17_0h_p<0.05.png", width = 20, height = 15, res = 300, units = "in")
+heatmap.DG0h.I = pheatmap(DEG.down.G0h.I.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG0h.I_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_0h_vs_A17_0h_p0.05")
+dev.off()
+```
+
+Extracción de genes por cluster (n = 3)
+
+```{r - G0h (<0,05): EXTRACCIÓN DE GENES / CLUSTER}
+
+##################### 
+# creo un objeto con la correspondencia entre nombres e identificadores 
+# necesario para el resto de operaciones de la celda
+IDname = data.frame(gene_id = count.matx$gene_id, names = count.matx$gene_name)
+IDname 
+#####################
+
+# (1) Obtener la lista de nombres de cada gen del heatmap
+DEG.down.G0h.I.hmtree = heatmap.DG0h.I$tree_row
+
+# (2) Definir el corte del dendrograma y guardar los genes de cada rama por separado
+DEG.down.G0h.I.hmtree.genes = cutree(DEG.down.G0h.I.hmtree, 3)
+
+
+# (3) Extraigo los genes de cada cluster en una lista
+DEG.down.G0h.I.hmtree.genes_1.df = data.frame(which(DEG.down.G0h.I.hmtree.genes==1))
+DEG.down.G0h.I.hmtree.genes_2.df = data.frame(which(DEG.down.G0h.I.hmtree.genes==2))
+DEG.down.G0h.I.hmtree.genes_3.df = data.frame(which(DEG.down.G0h.I.hmtree.genes==3))
+
+# (4) Completo cada uno de los dataframes con los gene_id y los gene_names
+## Primer paso, cambio el nombre de la primera columna, por el de "row_number"
+## Segundo paso, creo una segunda columna con el nombre del cluster al que pertenece el gen
+## Tercer paso, creo una tercera columna donde pongo los gene_id que están como rownames
+## Cuarto paso, creo una cuarta columna con los gene_names
+## Quinto paso, extraigo las líneas comunes con el IDname
+## Sexto paso, relleno la columna sólo con los valores de gene_name
+## Séptimo paso, exporto el dataframe como .tsv
+
+colnames(DEG.down.G0h.I.hmtree.genes_1.df) = "row_number"
+DEG.down.G0h.I.hmtree.genes_1.df$cluster_number = "downG0hI_1"
+DEG.down.G0h.I.hmtree.genes_1.df$gene_id = rownames(DEG.down.G0h.I.hmtree.genes_1.df)
+DEG.down.G0h.I.hmtree.genes_1.df$gene_name = " "
+subset.DEG.down.G0h.I.hmtree.genes_1 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.I.hmtree.genes_1.df$gene_id,]
+DEG.down.G0h.I.hmtree.genes_1.df$gene_name = subset.DEG.down.G0h.I.hmtree.genes_1[,2]
+write.table(DEG.down.G0h.I.hmtree.genes_1.df, file = "DEG.down.G0h.I.hmtree.genes_1.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G0h.I.hmtree.genes_2.df) = "row_number"
+DEG.down.G0h.I.hmtree.genes_2.df$cluster_number = "downG0hI_2"
+DEG.down.G0h.I.hmtree.genes_2.df$gene_id = rownames(DEG.down.G0h.I.hmtree.genes_2.df)
+DEG.down.G0h.I.hmtree.genes_2.df$gene_name = " "
+subset.DEG.down.G0h.I.hmtree.genes_2 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.I.hmtree.genes_2.df$gene_id,]
+DEG.down.G0h.I.hmtree.genes_2.df$gene_name = subset.DEG.down.G0h.I.hmtree.genes_2[,2]
+write.table(DEG.down.G0h.I.hmtree.genes_2.df, file = "DEG.down.G0h.I.hmtree.genes_2.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G0h.I.hmtree.genes_3.df) = "row_number"
+DEG.down.G0h.I.hmtree.genes_3.df$cluster_number = "downG0hI_3"
+DEG.down.G0h.I.hmtree.genes_3.df$gene_id = rownames(DEG.down.G0h.I.hmtree.genes_3.df)
+DEG.down.G0h.I.hmtree.genes_3.df$gene_name = " "
+subset.DEG.down.G0h.I.hmtree.genes_3 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.I.hmtree.genes_3.df$gene_id,]
+DEG.down.G0h.I.hmtree.genes_3.df$gene_name = subset.DEG.down.G0h.I.hmtree.genes_3[,2]
+write.table(DEG.down.G0h.I.hmtree.genes_3.df, file = "DEG.down.G0h.I.hmtree.genes_3.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+
+
+dim(DEG.down.G0h.I.hmtree.genes_1.df)
+dim(DEG.down.G0h.I.hmtree.genes_2.df)
+dim(DEG.down.G0h.I.hmtree.genes_3.df)
+
+```
+
+**[2] EFECTO GENOTIPO G0h (skl_0h - A17_0h) + SIGNIFICANCIA FDR \< 0,01**
+
+```{r - EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,01}
+
+# (1) A partir del objeto res_corrected, se crea un objeto con los genes significativamente infraexpresados
+DEG.down.G0h.II = res.G0h_corrected$table[res.G0h_corrected$table$FDR < 0.01 &
+                                     res.G0h_corrected$table$logFC < -1,]
+
+dim(DEG.down.G0h.II)
+
+
+# (2) A continuación, extraemos sus recuentos normalizados y ajustados
+DEG.down.G0h.II.count = y[y$genes$names %in% DEG.down.G0h.II$names,]
+
+head(DEG.down.G0h.II.count)
+dim(DEG.down.G0h.II.count$counts)
+
+# (3) Ahora se definen los clusters (para colorearlos luego en el heatmap)
+DG0h.II_sample_col = data.frame(sample = group)
+rownames(DG0h.II_sample_col) = colnames(DEG.down.G0h.II.count)
+
+DG0h.II_sample_col
+
+# (4) Obtención del heat map
+heatmap.DG0h.II = pheatmap(DEG.down.G0h.II.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG0h.II_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_0h_vs_A17_0h_p<0.01")
+heatmap.DG0h.II
+
+```
+
+Exportamos los mapas de calor:
+
+```{r - EXPORTAR GRÁFICOS: EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,01}
+
+## Exporto el heatmap
+png("HeatMap_downDEG_skl_0h_vs_A17_0h_p<0.01.png", width = 20, height = 15, res = 300, units = "in")
+heatmap.DG0h.II = pheatmap(DEG.down.G0h.II.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG0h.II_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_0h_vs_A17_0h_p0.01")
+dev.off()
+```
+
+Extracción de genes por cluster (n = 3)
+
+```{r - G0h (<0,01): EXTRACCIÓN DE GENES / CLUSTER}
+
+##################### 
+# Uso del objeto IDname creado anteriormente
+IDname 
+#####################
+
+# (1) Obtener la lista de nombres de cada gen del heatmap
+DEG.down.G0h.II.hmtree = heatmap.DG0h.II$tree_row
+
+# (2) Definir el corte del dendrograma y guardar los genes de cada rama por separado
+DEG.down.G0h.II.hmtree.genes = cutree(DEG.down.G0h.II.hmtree, 3)
+
+# (3) Extraigo los genes de cada cluster en una lista
+DEG.down.G0h.II.hmtree.genes_1.df = data.frame(which(DEG.down.G0h.II.hmtree.genes==1))
+DEG.down.G0h.II.hmtree.genes_2.df = data.frame(which(DEG.down.G0h.II.hmtree.genes==2))
+DEG.down.G0h.II.hmtree.genes_3.df = data.frame(which(DEG.down.G0h.II.hmtree.genes==3))
+
+# (4) Completo cada uno de los dataframes con los gene_id y los gene_names
+## Primer paso, cambio el nombre de la primera columna, por el de "row_number"
+## Segundo paso, creo una segunda columna con el nombre del cluster al que pertenece el gen
+## Tercer paso, creo una tercera columna donde pongo los gene_id que están como rownames
+## Cuarto paso, creo una cuarta columna con los gene_names
+## Quinto paso, extraigo las líneas comunes con el IDname
+## Sexto paso, relleno la columna sólo con los valores de gene_name
+## Séptimo paso, exporto el dataframe como .tsv
+
+
+colnames(DEG.down.G0h.II.hmtree.genes_1.df) = "row_number"
+DEG.down.G0h.II.hmtree.genes_1.df$cluster_number = "downG0hII_1"
+DEG.down.G0h.II.hmtree.genes_1.df$gene_id = rownames(DEG.down.G0h.II.hmtree.genes_1.df)
+DEG.down.G0h.II.hmtree.genes_1.df$gene_name = " "
+subset.DEG.down.G0h.II.hmtree.genes_1 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.II.hmtree.genes_1.df$gene_id,]
+DEG.down.G0h.II.hmtree.genes_1.df$gene_name = subset.DEG.down.G0h.II.hmtree.genes_1[,2]
+write.table(DEG.down.G0h.II.hmtree.genes_1.df, file = "DEG.down.G0h.II.hmtree.genes_1.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G0h.II.hmtree.genes_2.df) = "row_number"
+DEG.down.G0h.II.hmtree.genes_2.df$cluster_number = "downG0hII_2"
+DEG.down.G0h.II.hmtree.genes_2.df$gene_id = rownames(DEG.down.G0h.II.hmtree.genes_2.df)
+DEG.down.G0h.II.hmtree.genes_2.df$gene_name = " "
+subset.DEG.down.G0h.II.hmtree.genes_2 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.II.hmtree.genes_2.df$gene_id,]
+DEG.down.G0h.II.hmtree.genes_2.df$gene_name = subset.DEG.down.G0h.II.hmtree.genes_2[,2]
+write.table(DEG.down.G0h.II.hmtree.genes_2.df, file = "DEG.down.G0h.II.hmtree.genes_2.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G0h.III.hmtree.genes_3.df) = "row_number"
+DEG.down.G0h.II.hmtree.genes_3.df$cluster_number = "downG0hII_3"
+DEG.down.G0h.II.hmtree.genes_3.df$gene_id = rownames(DEG.down.G0h.II.hmtree.genes_3.df)
+DEG.down.G0h.II.hmtree.genes_3.df$gene_name = " "
+subset.DEG.down.G0h.II.hmtree.genes_3 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.II.hmtree.genes_3.df$gene_id,]
+DEG.down.G0h.II.hmtree.genes_3.df$gene_name = subset.DEG.down.G0h.II.hmtree.genes_3[,2]
+write.table(DEG.down.G0h.II.hmtree.genes_3.df, file = "DEG.down.G0h.II.hmtree.genes_3.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+dim(DEG.down.G0h.II.hmtree.genes_1.df)
+dim(DEG.down.G0h.II.hmtree.genes_2.df)
+dim(DEG.down.G0h.II.hmtree.genes_3.df)
+
+```
+
+**[3] EFECTO GENOTIPO G0h (skl_0h - A17_0h) + SIGNIFICANCIA FDR \< 0,001**
+
+```{r - EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,001}
+
+# (1) A partir del bjeto res_corrected se crea un objeto con los genes significativamente infraexpresados
+DEG.down.G0h.III = res.G0h_corrected$table[res.G0h_corrected$table$FDR < 0.001 &
+                                     res.G0h_corrected$table$logFC < -1,]
+
+dim(DEG.down.G0h.III)
+
+
+# (2) A continuación, extraemos sus recuentos normalizados y ajustados
+DEG.down.G0h.III.count = y[y$genes$names %in% DEG.down.G0h.III$names,]
+
+head(DEG.down.G0h.III.count)
+dim(DEG.down.G0h.III.count$counts)
+
+# (3) Ahora se definen los clusters (para colorearlos luego en el heatmap)
+DG0h.III_sample_col = data.frame(sample = group)
+rownames(DG0h.III_sample_col) = colnames(DEG.down.G0h.III.count)
+
+DG0h.III_sample_col
+
+# (4) Obtención del heat map
+heatmap.DG0h.III = pheatmap(DEG.down.G0h.III.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG0h.III_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_0h_vs_A17_0h_p<0.001")
+heatmap.DG0h.III
+
+```
+
+Exportamos los mapas de calor:
+
+```{r - EXPORTAR GRÁFICOS: EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,001}
+
+## Exporto el heatmap
+png("HeatMap_downDEG_skl_0h_vs_A17_0h_p<0.001.png", width = 10, height = 8, res = 300, units = "in")
+heatmap.DG0h.III = pheatmap(DEG.down.G0h.III.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG0h.III_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_0h_vs_A17_0h_p0.001")
+dev.off()
+```
+
+Extracción de genes por cluster (n = 3)
+
+```{r - G0h (<0,001): EXTRACCIÓN DE GENES / CLUSTER}
+
+##################### 
+# Uso el objeto creado IDname
+IDname 
+#####################
+
+# (1) Obtener la lista de nombres de cada gen del heatmap
+DEG.down.G0h.III.hmtree = heatmap.DG0h.III$tree_row
+
+# (2) Definir el corte del dendrograma y guardar los genes de cada rama por separado
+DEG.down.G0h.III.hmtree.genes = cutree(DEG.down.G0h.III.hmtree, 3)
+
+
+# (3) Extraigo los genes de cada cluster en una lista
+DEG.down.G0h.III.hmtree.genes_1.df = data.frame(which(DEG.down.G0h.III.hmtree.genes==1))
+DEG.down.G0h.III.hmtree.genes_2.df = data.frame(which(DEG.down.G0h.III.hmtree.genes==2))
+DEG.down.G0h.III.hmtree.genes_3.df = data.frame(which(DEG.down.G0h.III.hmtree.genes==3))
+
+# (4) Completo cada uno de los dataframes con los gene_id y los gene_names
+## Primer paso, cambio el nombre de la primera columna, por el de "row_number"
+## Segundo paso, creo una segunda columna con el nombre del cluster al que pertenece el gen
+## Tercer paso, creo una tercera columna donde pongo los gene_id que están como rownames
+## Cuarto paso, creo una cuarta columna con los gene_names
+## Quinto paso, extraigo las líneas comunes con el IDname
+## Sexto paso, relleno la columna sólo con los valores de gene_name
+## Séptimo paso, exporto el dataframe como .tsv
+
+
+colnames(DEG.down.G0h.III.hmtree.genes_1.df) = "row_number"
+DEG.down.G0h.III.hmtree.genes_1.df$cluster_number = "downG0hIII_1"
+DEG.down.G0h.III.hmtree.genes_1.df$gene_id = rownames(DEG.down.G0h.III.hmtree.genes_1.df)
+DEG.down.G0h.III.hmtree.genes_1.df$gene_name = " "
+subset.DEG.down.G0h.III.hmtree.genes_1 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.III.hmtree.genes_1.df$gene_id,]
+DEG.down.G0h.III.hmtree.genes_1.df$gene_name = subset.DEG.down.G0h.III.hmtree.genes_1[,2]
+write.table(DEG.down.G0h.III.hmtree.genes_1.df, file = "DEG.down.G0h.III.hmtree.genes_1.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G0h.III.hmtree.genes_2.df) = "row_number"
+DEG.down.G0h.III.hmtree.genes_2.df$cluster_number = "downG0hIII_2"
+DEG.down.G0h.III.hmtree.genes_2.df$gene_id = rownames(DEG.down.G0h.III.hmtree.genes_2.df)
+DEG.down.G0h.III.hmtree.genes_2.df$gene_name = " "
+subset.DEG.down.G0h.III.hmtree.genes_2 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.III.hmtree.genes_2.df$gene_id,]
+DEG.down.G0h.III.hmtree.genes_2.df$gene_name = subset.DEG.down.G0h.III.hmtree.genes_2[,2]
+write.table(DEG.down.G0h.III.hmtree.genes_2.df, file = "DEG.down.G0h.III.hmtree.genes_2.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G0h.III.hmtree.genes_3.df) = "row_number"
+DEG.down.G0h.III.hmtree.genes_3.df$cluster_number = "downG0hIII_3"
+DEG.down.G0h.III.hmtree.genes_3.df$gene_id = rownames(DEG.down.G0h.III.hmtree.genes_3.df)
+DEG.down.G0h.III.hmtree.genes_3.df$gene_name = " "
+subset.DEG.down.G0h.III.hmtree.genes_3 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G0h.III.hmtree.genes_3.df$gene_id,]
+DEG.down.G0h.III.hmtree.genes_3.df$gene_name = subset.DEG.down.G0h.III.hmtree.genes_3[,2]
+write.table(DEG.down.G0h.III.hmtree.genes_3.df, file = "DEG.down.G0h.III.hmtree.genes_3.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+dim(DEG.down.G0h.III.hmtree.genes_1.df)
+dim(DEG.down.G0h.III.hmtree.genes_2.df)
+dim(DEG.down.G0h.III.hmtree.genes_3.df)
+
+```
+
+A continuación se repiten los heatmaps para tiempo 48h
+
+**[4] EFECTO GENOTIPO G48h (skl_48h - A17_48h) + SIGNIFICANCIA FDR \< 0,05**
+
+```{r - EFECTO GENOTIPO G48h (skl_48h - A17_48h) + FDR < 0,05}
+
+# (1) A partir de los objetos res_corrected, creamos un objeto con los genes significativamente infraexpresados en skl (up en A17)
+DEG.down.G48h.I = res.G48h_corrected$table[res.G48h_corrected$table$FDR < 0.05 &
+                                     res.G48h_corrected$table$logFC < -1,]
+dim(DEG.down.G48h.I)
+
+
+# (2) A continuación, extraemos sus recuentos normalizados y ajustados
+DEG.down.G48h.I.count = y[y$genes$names %in% DEG.down.G48h.I$names,]
+
+head(DEG.down.G48h.I.count)
+dim(DEG.down.G48h.I.count$counts)
+
+# (3) Ahora se definen los clusters (para colorearlos luego en el heatmap)
+DG48h.I_sample_col = data.frame(sample = group)
+rownames(DG48h.I_sample_col) = colnames(DEG.down.G48h.I.count)
+
+DG48h.I_sample_col
+
+# (4) Obtención del heat map
+heatmap.DG48h.I = pheatmap(DEG.down.G48h.I.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG48h.I_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_48h_vs_A17_48h_p<0.001")
+heatmap.DG48h.I
+
+```
+
+Exportamos los mapas de calor:
+
+```{r - EXPORTAR GRÁFICOS: EFECTO GENOTIPO G48h (skl_48h - A17_48h) + FDR < 0,05}
+
+png("HeatMap_downDEG_skl_48h_vs_A17_vh_p<0.05.png", width = 20, height = 20, res = 300, units = "in")
+heatmap.DG48h.I = pheatmap(DEG.down.G48h.I.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG48h.I_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_48h_vs_A17_48h_p0.05")
+dev.off()
+```
+
+Extracción de genes por cluster (n = 3)
+
+```{r - G48h (<0,05): EXTRACCIÓN DE GENES / CLUSTER}
+
+##################### 
+# Uso el objeto IDname creado
+IDname 
+#####################
+
+# (1) Obtener la lista de nombres de cada gen del heatmap
+DEG.down.G48h.I.hmtree = heatmap.DG48h.I$tree_row
+
+# (2) Definir el corte del dendrograma y guardar los genes de cada rama por separado
+DEG.down.G48h.I.hmtree.genes = cutree(DEG.down.G48h.I.hmtree, 3)
+
+
+# (3) Extraigo los genes de cada cluster en una lista
+DEG.down.G48h.I.hmtree.genes_1.df = data.frame(which(DEG.down.G48h.I.hmtree.genes==1))
+DEG.down.G48h.I.hmtree.genes_2.df = data.frame(which(DEG.down.G48h.I.hmtree.genes==2))
+DEG.down.G48h.I.hmtree.genes_3.df = data.frame(which(DEG.down.G48h.I.hmtree.genes==3))
+
+# (4) Completo cada uno de los dataframes con los gene_id y los gene_names
+## Primer paso, cambio el nombre de la primera columna, por el de "row_number"
+## Segundo paso, creo una segunda columna con el nombre del cluster al que pertenece el gen
+## Tercer paso, creo una tercera columna donde pongo los gene_id que están como rownames
+## Cuarto paso, creo una cuarta columna con los gene_names
+## Quinto paso, extraigo las líneas comunes con el IDname
+## Sexto paso, relleno la columna sólo con los valores de gene_name
+## Séptimo paso, exporto el dataframe como .tsv
+
+colnames(DEG.down.G48h.I.hmtree.genes_1.df) = "row_number"
+DEG.down.G48h.I.hmtree.genes_1.df$cluster_number = "downG48hI_1"
+DEG.down.G48h.I.hmtree.genes_1.df$gene_id = rownames(DEG.down.G48h.I.hmtree.genes_1.df)
+DEG.down.G48h.I.hmtree.genes_1.df$gene_name = " "
+subset.DEG.down.G48h.I.hmtree.genes_1 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.I.hmtree.genes_1.df$gene_id,]
+DEG.down.G48h.I.hmtree.genes_1.df$gene_name = subset.DEG.down.G48h.I.hmtree.genes_1[,2]
+write.table(DEG.down.G48h.I.hmtree.genes_1.df, file = "DEG.down.G48h.I.hmtree.genes_1.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.I.hmtree.genes_2.df) = "row_number"
+DEG.down.G48h.I.hmtree.genes_2.df$cluster_number = "downG48hI_2"
+DEG.down.G48h.I.hmtree.genes_2.df$gene_id = rownames(DEG.down.G48h.I.hmtree.genes_2.df)
+DEG.down.G48h.I.hmtree.genes_2.df$gene_name = " "
+subset.DEG.down.G48h.I.hmtree.genes_2 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.I.hmtree.genes_2.df$gene_id,]
+DEG.down.G48h.I.hmtree.genes_2.df$gene_name = subset.DEG.down.G48h.I.hmtree.genes_2[,2]
+write.table(DEG.down.G48h.I.hmtree.genes_2.df, file = "DEG.down.G48h.I.hmtree.genes_2.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.I.hmtree.genes_3.df) = "row_number"
+DEG.down.G48h.I.hmtree.genes_3.df$cluster_number = "downG48hI_3"
+DEG.down.G48h.I.hmtree.genes_3.df$gene_id = rownames(DEG.down.G48h.I.hmtree.genes_3.df)
+DEG.down.G48h.I.hmtree.genes_3.df$gene_name = " "
+subset.DEG.down.G48h.I.hmtree.genes_3 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.I.hmtree.genes_3.df$gene_id,]
+DEG.down.G48h.I.hmtree.genes_3.df$gene_name = subset.DEG.down.G48h.I.hmtree.genes_3[,2]
+write.table(DEG.down.G48h.I.hmtree.genes_3.df, file = "DEG.down.G48h.I.hmtree.genes_3.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+
+
+dim(DEG.down.G48h.I.hmtree.genes_1.df)
+dim(DEG.down.G48h.I.hmtree.genes_2.df)
+dim(DEG.down.G48h.I.hmtree.genes_3.df)
+
+```
+
+**[5] EFECTO GENOTIPO G48h (skl_48h - A17_48h) + SIGNIFICANCIA FDR \< 0,01**
+
+```{r - EFECTO GENOTIPO G48h (skl_48h - A17_48h) + FDR < 0,01}
+
+# (1) A partir del objeto res_corrected, se crea un objeto con los genes significativamente infraexpresados
+DEG.down.G48h.II = res.G48h_corrected$table[res.G48h_corrected$table$FDR < 0.01 &
+                                     res.G48h_corrected$table$logFC < -1,]
+
+dim(DEG.down.G48h.II)
+
+
+# (2) A continuación, extraemos sus recuentos normalizados y ajustados
+DEG.down.G48h.II.count = y[y$genes$names %in% DEG.down.G48h.II$names,]
+
+head(DEG.down.G48h.II.count)
+dim(DEG.down.G48h.II.count$counts)
+
+# (3) Ahora se definen los clusters (para colorearlos luego en el heatmap)
+DG48h.II_sample_col = data.frame(sample = group)
+rownames(DG48h.II_sample_col) = colnames(DEG.down.G48h.II.count)
+
+DG48h.II_sample_col
+
+# (4) Obtención del heat map
+heatmap.DG48h.II = pheatmap(DEG.down.G48h.II.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG48h.II_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_48h_vs_A17_48h_p<0.01")
+heatmap.DG48h.II
+
+```
+
+Exportamos los mapas de calor:
+
+```{r - EXPORTAR GRÁFICOS: EFECTO GENOTIPO G48h (skl_48h - A17_48h) + FDR < 0,01}
+
+## Exporto el heatmap
+png("HeatMap_downDEG_skl_48h_vs_A17_48h_p<0.01.png", width = 20, height = 15, res = 300, units = "in")
+heatmap.DG48h.II = pheatmap(DEG.down.G48h.II.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG48h.II_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_48h_vs_A17_48h_p0.01")
+dev.off()
+```
+
+Extracción de genes por cluster (n = 3)
+
+```{r - G48h (<0,01): EXTRACCIÓN DE GENES / CLUSTER}
+
+##################### 
+# Uso del objeto IDname creado anteriormente
+IDname 
+#####################
+
+# (1) Obtener la lista de nombres de cada gen del heatmap
+DEG.down.G48h.II.hmtree = heatmap.DG48h.II$tree_row
+
+# (2) Definir el corte del dendrograma y guardar los genes de cada rama por separado
+DEG.down.G48h.II.hmtree.genes = cutree(DEG.down.G48h.II.hmtree, 3)
+
+# (3) Extraigo los genes de cada cluster en una lista
+DEG.down.G48h.II.hmtree.genes_1.df = data.frame(which(DEG.down.G48h.II.hmtree.genes==1))
+DEG.down.G48h.II.hmtree.genes_2.df = data.frame(which(DEG.down.G48h.II.hmtree.genes==2))
+DEG.down.G48h.II.hmtree.genes_3.df = data.frame(which(DEG.down.G48h.II.hmtree.genes==3))
+
+# (4) Completo cada uno de los dataframes con los gene_id y los gene_names
+## Primer paso, cambio el nombre de la primera columna, por el de "row_number"
+## Segundo paso, creo una segunda columna con el nombre del cluster al que pertenece el gen
+## Tercer paso, creo una tercera columna donde pongo los gene_id que están como rownames
+## Cuarto paso, creo una cuarta columna con los gene_names
+## Quinto paso, extraigo las líneas comunes con el IDname
+## Sexto paso, relleno la columna sólo con los valores de gene_name
+## Séptimo paso, exporto el dataframe como .tsv
+
+
+colnames(DEG.down.G48h.II.hmtree.genes_1.df) = "row_number"
+DEG.down.G48h.II.hmtree.genes_1.df$cluster_number = "downG48hII_1"
+DEG.down.G48h.II.hmtree.genes_1.df$gene_id = rownames(DEG.down.G48h.II.hmtree.genes_1.df)
+DEG.down.G48h.II.hmtree.genes_1.df$gene_name = " "
+subset.DEG.down.G48h.II.hmtree.genes_1 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.II.hmtree.genes_1.df$gene_id,]
+DEG.down.G48h.II.hmtree.genes_1.df$gene_name = subset.DEG.down.G48h.II.hmtree.genes_1[,2]
+write.table(DEG.down.G48h.II.hmtree.genes_1.df, file = "DEG.down.G48h.II.hmtree.genes_1.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.II.hmtree.genes_2.df) = "row_number"
+DEG.down.G48h.II.hmtree.genes_2.df$cluster_number = "downG48hII_2"
+DEG.down.G48h.II.hmtree.genes_2.df$gene_id = rownames(DEG.down.G48h.II.hmtree.genes_2.df)
+DEG.down.G48h.II.hmtree.genes_2.df$gene_name = " "
+subset.DEG.down.G48h.II.hmtree.genes_2 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.II.hmtree.genes_2.df$gene_id,]
+DEG.down.G48h.II.hmtree.genes_2.df$gene_name = subset.DEG.down.G48h.II.hmtree.genes_2[,2]
+write.table(DEG.down.G48h.II.hmtree.genes_2.df, file = "DEG.down.G48h.II.hmtree.genes_2.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.III.hmtree.genes_3.df) = "row_number"
+DEG.down.G48h.II.hmtree.genes_3.df$cluster_number = "downG48hII_3"
+DEG.down.G48h.II.hmtree.genes_3.df$gene_id = rownames(DEG.down.G48h.II.hmtree.genes_3.df)
+DEG.down.G48h.II.hmtree.genes_3.df$gene_name = " "
+subset.DEG.down.G48h.II.hmtree.genes_3 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.II.hmtree.genes_3.df$gene_id,]
+DEG.down.G48h.II.hmtree.genes_3.df$gene_name = subset.DEG.down.G48h.II.hmtree.genes_3[,2]
+write.table(DEG.down.G48h.II.hmtree.genes_3.df, file = "DEG.down.G48h.II.hmtree.genes_3.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+dim(DEG.down.G48h.II.hmtree.genes_1.df)
+dim(DEG.down.G48h.II.hmtree.genes_2.df)
+dim(DEG.down.G48h.II.hmtree.genes_3.df)
+
+```
+
+**[6] EFECTO GENOTIPO G48h (skl_48h - A17_48h) + SIGNIFICANCIA FDR \< 0,001**
+
+```{r - EFECTO GENOTIPO G48h (skl_48h - A17_48h) + FDR < 0,001}
+
+# (1) A partir del bjeto res_corrected se crea un objeto con los genes significativamente infraexpresados
+DEG.down.G48h.III = res.G48h_corrected$table[res.G48h_corrected$table$FDR < 0.001 &
+                                     res.G48h_corrected$table$logFC < -1,]
+
+dim(DEG.down.G48h.III)
+
+
+# (2) A continuación, extraemos sus recuentos normalizados y ajustados
+DEG.down.G48h.III.count = y[y$genes$names %in% DEG.down.G48h.III$names,]
+
+head(DEG.down.G48h.III.count)
+dim(DEG.down.G48h.III.count$counts)
+
+# (3) Ahora se definen los clusters (para colorearlos luego en el heatmap)
+DG48h.III_sample_col = data.frame(sample = group)
+rownames(DG48h.III_sample_col) = colnames(DEG.down.G48h.III.count)
+
+DG0h.III_sample_col
+
+# (4) Obtención del heat map
+heatmap.DG48h.III = pheatmap(DEG.down.G48h.III.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG48h.III_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_48h_vs_A17_48h_p<0.001")
+heatmap.DG48h.III
+
+```
+
+Exportamos los mapas de calor:
+
+```{r - EXPORTAR GRÁFICOS: EFECTO GENOTIPO G0h (skl_0h - A17_0h) + FDR < 0,001}
+
+## Exporto el heatmap
+png("HeatMap_downDEG_skl_48h_vs_A17_48h_p<0.001.png", width = 20, height = 15, res = 300, units = "in")
+heatmap.DG48h.III = pheatmap(DEG.down.G48h.III.count, 
+                            scale = "row", 
+                            cluster_rows = T, 
+                            cluster_cols = T,
+                            clustering_distance_rows = "euclidean", 
+                            clustering_distance_cols = "euclidean",
+                            clustering_method = "ward.D2", 
+                            annotation_col = DG48h.III_sample_col,
+                            cutree_rows = 2, 
+                            cutree_cols = 3, 
+                            fontsize_row = 6, 
+                            display_numbers = F,
+                            show_rownames = T, 
+                            main = "downDEG_skl_48h_vs_A17_48h_p0.001")
+dev.off()
+```
+
+Extracción de genes por cluster (n = 4)
+
+```{r - G48h (<0,001): EXTRACCIÓN DE GENES / CLUSTER}
+
+##################### 
+# Uso el objeto creado IDname
+IDname 
+#####################
+
+# (1) Obtener la lista de nombres de cada gen del heatmap
+DEG.down.G48h.III.hmtree = heatmap.DG48h.III$tree_row
+
+# (2) Definir el corte del dendrograma y guardar los genes de cada rama por separado
+DEG.down.G48h.III.hmtree.genes = cutree(DEG.down.G48h.III.hmtree, 4)
+
+
+# (3) Extraigo los genes de cada cluster en una lista
+DEG.down.G48h.III.hmtree.genes_1.df = data.frame(which(DEG.down.G48h.III.hmtree.genes==1))
+DEG.down.G48h.III.hmtree.genes_2.df = data.frame(which(DEG.down.G48h.III.hmtree.genes==2))
+DEG.down.G48h.III.hmtree.genes_3.df = data.frame(which(DEG.down.G48h.III.hmtree.genes==3))
+DEG.down.G48h.III.hmtree.genes_4.df = data.frame(which(DEG.down.G48h.III.hmtree.genes==4))
+
+# (4) Completo cada uno de los dataframes con los gene_id y los gene_names
+## Primer paso, cambio el nombre de la primera columna, por el de "row_number"
+## Segundo paso, creo una segunda columna con el nombre del cluster al que pertenece el gen
+## Tercer paso, creo una tercera columna donde pongo los gene_id que están como rownames
+## Cuarto paso, creo una cuarta columna con los gene_names
+## Quinto paso, extraigo las líneas comunes con el IDname
+## Sexto paso, relleno la columna sólo con los valores de gene_name
+## Séptimo paso, exporto el dataframe como .tsv
+
+
+colnames(DEG.down.G48h.III.hmtree.genes_1.df) = "row_number"
+DEG.down.G48h.III.hmtree.genes_1.df$cluster_number = "downG48hIII_1"
+DEG.down.G48h.III.hmtree.genes_1.df$gene_id = rownames(DEG.down.G48h.III.hmtree.genes_1.df)
+DEG.down.G48h.III.hmtree.genes_1.df$gene_name = " "
+subset.DEG.down.G48h.III.hmtree.genes_1 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.III.hmtree.genes_1.df$gene_id,]
+DEG.down.G48h.III.hmtree.genes_1.df$gene_name = subset.DEG.down.G48h.III.hmtree.genes_1[,2]
+write.table(DEG.down.G48h.III.hmtree.genes_1.df, file = "DEG.down.G48h.III.hmtree.genes_1.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.III.hmtree.genes_2.df) = "row_number"
+DEG.down.G48h.III.hmtree.genes_2.df$cluster_number = "downG48hIII_2"
+DEG.down.G48h.III.hmtree.genes_2.df$gene_id = rownames(DEG.down.G48h.III.hmtree.genes_2.df)
+DEG.down.G48h.III.hmtree.genes_2.df$gene_name = " "
+subset.DEG.down.G48h.III.hmtree.genes_2 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.III.hmtree.genes_2.df$gene_id,]
+DEG.down.G48h.III.hmtree.genes_2.df$gene_name = subset.DEG.down.G48h.III.hmtree.genes_2[,2]
+write.table(DEG.down.G48h.III.hmtree.genes_2.df, file = "DEG.down.G48h.III.hmtree.genes_2.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.III.hmtree.genes_3.df) = "row_number"
+DEG.down.G48h.III.hmtree.genes_3.df$cluster_number = "downG48hIII_3"
+DEG.down.G48h.III.hmtree.genes_3.df$gene_id = rownames(DEG.down.G48h.III.hmtree.genes_3.df)
+DEG.down.G48h.III.hmtree.genes_3.df$gene_name = " "
+subset.DEG.down.G48h.III.hmtree.genes_3 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.III.hmtree.genes_3.df$gene_id,]
+DEG.down.G48h.III.hmtree.genes_3.df$gene_name = subset.DEG.down.G48h.III.hmtree.genes_3[,2]
+write.table(DEG.down.G48h.III.hmtree.genes_3.df, file = "DEG.down.G48h.III.hmtree.genes_3.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+colnames(DEG.down.G48h.III.hmtree.genes_4.df) = "row_number"
+DEG.down.G48h.III.hmtree.genes_4.df$cluster_number = "downG48hIII_3"
+DEG.down.G48h.III.hmtree.genes_4.df$gene_id = rownames(DEG.down.G48h.III.hmtree.genes_4.df)
+DEG.down.G48h.III.hmtree.genes_4.df$gene_name = " "
+subset.DEG.down.G48h.III.hmtree.genes_4 = IDname[IDname$gene_id %in% 
+                                                DEG.down.G48h.III.hmtree.genes_4.df$gene_id,]
+DEG.down.G48h.III.hmtree.genes_4.df$gene_name = subset.DEG.down.G48h.III.hmtree.genes_4[,2]
+write.table(DEG.down.G48h.III.hmtree.genes_4.df, file = "DEG.down.G48h.III.hmtree.genes_4.tsv", 
+            append = FALSE, sep =  " ", row.names = TRUE, col.names = TRUE)
+
+
+dim(DEG.down.G48h.III.hmtree.genes_1.df)
+dim(DEG.down.G48h.III.hmtree.genes_2.df)
+dim(DEG.down.G48h.III.hmtree.genes_3.df)
+dim(DEG.down.G48h.III.hmtree.genes_4.df)
+
+```
+
+Fin del notebook

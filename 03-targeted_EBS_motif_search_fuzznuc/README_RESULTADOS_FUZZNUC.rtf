@@ -1,0 +1,54 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2580
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica-Bold;\f1\fswiss\fcharset0 Helvetica;\f2\fswiss\fcharset0 Helvetica-Oblique;
+\f3\fswiss\fcharset0 Helvetica-BoldOblique;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red251\green2\blue7;\red127\green0\blue128;
+\red0\green0\blue255;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;\cssrgb\c100000\c14913\c0;\cssrgb\c57919\c12801\c57269;
+\cssrgb\c1680\c19835\c100000;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\b\fs36 \cf0 CONTENIDO DE LA CARPETA DE RESULTADOS DE FUZZNUC
+\f1\b0\fs24 \
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\b \cf2 Tipos de datos usados en el an\'e1lisis FUZZNUC:
+\f1\b0 \cf0 \
+\
+
+\f0\b \cf2 DEG
+\f1\b0 \cf0 : genes diferencialmente expresados en ra\'edz con significancia estad\'edstica. Son los clusters de los heat maps seleccionados.\
+\
+
+\f0\b \cf2 noSigDEG
+\f1\b0 \cf0 : genes diferencialmente expresados en ra\'edz sin significancia estad\'edstica. Son los "puntos" grises del volcano plot para skl_0h - A17_0h pvadj<0.05. Son un total de 3062 genes. De entre ellos se seleccionaron 4 sets de genes con el mismo n\'famero de genes que los 4 grupos de DEGs. Esto se hizo por triplicado. Todo hecho de forma aleatoria.\
+\
+
+\f0\b \cf2 random
+\f1\b0 \cf0 : cualquier gen del genoma de 
+\f2\i M. truncatula
+\f1\i0 . Al igual que para los noSigDEG, se seleccionaron 4 set de genes con el mismo n\'famero de genes que los grupos DEGs, y se hizo por triplicado. Todo hecho de forma aleatoria.\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf3 NOTA IMPORTANTE: \cf0 En los c\'f3digos y en los resultados utilizo los n\'fameros 27, 8, 172 y 141 que hacen referencia al n\'famero de genes existentes en cada grupo DEG (G0hg1, G0hg2, G48hg3 y G48hg4, respectivamente). No obstante, al hacer una tabla resumen, comprob\'e9 que mi conteo de genes/grupo inicial no fue correcto y que el set de datos inicial ten\'eda 29, 8, 165 y 136 genes, respectivamente. A nivel de an\'e1lisis, rehice todos los pasos usando grupos de controles con 29, 8, 165 y 136 genes, pero no modifiqu\'e9 el nombre de los archivos del script por motivos de tiempo. Tengo pensado hacerlo tras completar el segundo borrador. Por ahora, los nombres de los archivos 27, 8, 172 y 141, se corresponden con los grupos de 29, 8, 165 y 136 genes.\
+\
+\
+Esta carpeta contiene los 
+\f3\i\b scripts
+\f1\i0\b0  utilizados en el an\'e1lisis de FUZZNUC, as\'ed como aquellos para la b\'fasqueda de GOterms/anotaciones. Se presentan en orden de uso:\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf4 TFBS-analysis_EBSnew-Motif_search.sh\cf5  \cf2 - Script para realizar la b\'fasqueda de motivos 2EBS(-1)\cf0 \
+\cf4 TFBS-analysis_EBS_Hit_counting.sh\cf0  \cf2 - Script contabilizar el n\'famero de secuencias con hits, y el n\'famero de hits totales por set de datos.\cf0 \
+\cf4 EBS-harboring-genes_GO-information_extraction.sh\cf0  \cf2 - Script para obtener el nombre del gen con hit en su regi\'f3n promotora dentro de los DEG sets.\
+\cf4 EBS-harboring-noSig-genes_GO-information_extraction.sh\cf0  \cf2 - Script para obtener el nombre del gen con hit en su regi\'f3n promotora dentro de los NonSigDEG sets.\
+\cf4 EBS-harboring-random-genes_GO-information_extraction.sh\cf0  \cf2 - Script para obtener el nombre del gen con hit en su regi\'f3n promotora dentro de los random sets.\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+Cada script tiene informaci\'f3n detallada de cada paso.\
+\
+#END\
+\
+\
+}

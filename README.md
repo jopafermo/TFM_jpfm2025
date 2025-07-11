@@ -16,6 +16,9 @@ Folder 4: 04-exploratory _motif_search_meme
   Finally, this folder include the different scripts (bash) used to explore different motifs in the isolated promoter regions by an differential enrichment approach using meme (MEME SUITE).
   Like the other two precious folders, it also contains a README file (README_RESULTADOS_MEME.rtf) with additional information about the samples and the purpose of the scripts.
 
+Folder 5: 05- Dot-plots_adicionales
+  This folder contains the last piece of code in R used to amend the latest comments made on draft3
+
 Each one of these scripts has a full description of each step within.
 
 Josefina Patricia Fernández Moreno
